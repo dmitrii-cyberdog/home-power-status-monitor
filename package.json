@@ -28,7 +28,7 @@
     "nanoid": "^6.0.0",
     "node-cron": "^4.6.0",
     "p-queue": "^9.3.1",
-    "qs": "6.16.0",
+    "qs": "6.16.1",
     "tunnel": "^0.0.6"
   },
   "devDependencies": {
@@ -42,7 +42,7 @@
     "prettier": "^3.9.5"
   },
   "resolutions": {
-    "qs": "6.16.0"
+    "qs": "6.16.1"
   },
   "extensionless": {
     "lookFor": [
