@@ -2,7 +2,7 @@
 set -euo pipefail
 
 tested_commit=${1:?Pass the commit that passed CI}
-repo=https://github.com/dmitrii-cyberdog/home-power-status-monitor.git
+repo=dmitrii-cyberdog/home-power-status-monitor
 app_dir="$HOME/projects/home-power-status-monitor"
 
 echo "Deploying master to $app_dir"
@@ -12,12 +12,22 @@ cd "$app_dir"
 
 if [[ ! -e .git ]]; then
   git init -b master
-  git remote add origin "$repo"
+  git remote add origin "https://github.com/$repo.git"
 fi
 
-if [[ "$(git config --get remote.origin.url)" != "$repo" ||
-      "$(git branch --show-current)" != master ]]; then
-  echo 'Expected the public home-power-status-monitor repository on master.' >&2
+origin=$(git config --get remote.origin.url || true)
+
+case "${origin%.git}" in
+  "https://github.com/$repo" | "git@github.com:$repo" | "ssh://git@github.com/$repo")
+    ;;
+  *)
+    echo "Expected origin to point to github.com/$repo." >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$(git branch --show-current)" != master ]]; then
+  echo 'Expected the server checkout to be on master.' >&2
   exit 1
 fi
 

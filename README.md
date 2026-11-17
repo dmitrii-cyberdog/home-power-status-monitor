@@ -190,7 +190,8 @@ Configure `SSH_USER`, `SSH_KEY` (the SSH private key), and `SERVER_PROD_MAIN_1`
 key with `ssh-keyscan`. Node.js 24 and PM2 must be available to the server's SSH
 login shell. Set the production configuration in
 `~/projects/home-power-status-monitor/src/.env.local` before the first deploy.
-The server fetches the public repository over HTTPS without a GitHub deploy key.
+New server checkouts use HTTPS without a GitHub deploy key. Existing checkouts
+can use HTTPS or SSH for the same repository.
 
 Run exactly one writer per storage directory. See
 [monitor design](docs/monitor-design.md) and
