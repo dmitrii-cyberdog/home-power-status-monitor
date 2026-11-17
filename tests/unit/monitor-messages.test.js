@@ -41,6 +41,27 @@ const translate = locale => {
     i18n.t(locale, key, variables).replace(/[\u2068\u2069]/g, '')
 }
 
+test('brief status separates each heading and marks the current power state', () => {
+  const homes = [
+    home({ name: 'North' }),
+    home({ name: 'South', status: 'off' }),
+    home({ name: 'West', status: 'unknown' }),
+  ]
+
+  const t = translate('en')
+
+  const [brief] = renderStatusMessages(homes, t)
+
+  assert.match(brief, /<b>North<\/b>\n\n<b>⚡ ✅ Power on/)
+  assert.match(brief, /────────\n\n<b>South<\/b>\n\n<b>⚡ ❌ Power off/)
+  assert.match(brief, /────────\n\n<b>West<\/b>\n\n<b>⚡ Power status unknown/)
+
+  const [full] = messages.renderFullStatusMessages(homes, t)
+
+  assert.match(full, /<b>North<\/b>\n<b>Power on/)
+  assert.doesNotMatch(full, /⚡|✅|❌/)
+})
+
 test('brief status shows only current state, duration and opposite detection', () => {
   const t = translate('en')
   const on = renderStatusMessages([home({ durationMs: 183600000 })], t).join(
@@ -158,6 +179,7 @@ test('a header exactly at the message budget never produces an empty reply', () 
   )
 
   assert.equal(result[0].length, 4000)
+  assert.match(result[1], /^<b>⚡ ✅ Power on/)
   assert.ok(
     result.every(message => message.length > 0 && message.length <= 4000),
   )

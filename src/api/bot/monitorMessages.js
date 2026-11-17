@@ -152,7 +152,13 @@ const homeLines = (statuses, t, render) =>
   )
 
 export const renderStatusMessages = (statuses, t) =>
-  homeLines(statuses, t, summaryLines)
+  homeLines(statuses, t, (home, translate) => {
+    const [heading, [state, tag], ...details] = summaryLines(home, translate)
+
+    const icon = { on: '⚡ ✅', off: '⚡ ❌', unknown: '⚡' }[home.status]
+
+    return [heading, [''], [`${icon} ${state}`, tag], ...details]
+  })
 
 export const renderFullStatusMessages = (statuses, t) =>
   homeLines(statuses, t, (home, translate) => [
