@@ -37,9 +37,10 @@ Load order from `src` (later values win):
 3. `.env.local`: private machine-specific overrides.
 4. Exported process variables override every file.
 
-Use `src/.env.example` as a template without overwriting existing private
-values. Real env files are ignored by Git. Tests set `NODE_ENV=test` and skip
-dotenv files.
+Shared non-secret defaults in `src/.env`, `src/.env.dev` and `src/.env.prod`
+belong in Git. Keep credentials and private overrides in ignored local files,
+such as `src/.env.local`. The worker loads `.env.local` after shared settings.
+Tests set `NODE_ENV=test` and skip dotenv files.
 
 For an existing installation, replace `NODE_ENV=development` with `dev` and
 `NODE_ENV=production` with `prod`. The default is now `local`, which skips both
@@ -64,8 +65,8 @@ instead of the default one. Empty homes remain unknown. Only the Europe origin
 is supported. Retired cron expressions are ignored; global EZVIZ keys are
 rejected.
 
-Keep credentials and home-specific settings in ignored env files. Only
-`src/.env.example` is a public configuration template.
+Keep credentials and home-specific settings in ignored local env files. Use the
+commented home/device block in `src/.env` as a configuration example.
 
 ## Run
 

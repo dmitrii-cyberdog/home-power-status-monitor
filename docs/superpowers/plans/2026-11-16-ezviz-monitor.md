@@ -32,9 +32,9 @@ must not contribute observations or power inference.
 
 - Preserve extensionless imports and the `src` working directory.
 - Preserve private settings, useful comments, blank lines and unrelated work.
-- Only `src/.env.example` is a tracked environment template. Documentation may
-  illustrate settings; use fake names, serials and credentials everywhere in
-  tracked files and tests.
+- Track non-secret defaults in `src/.env`, `src/.env.dev` and `src/.env.prod`;
+  ignore local overrides. Documentation may illustrate settings; use fake names,
+  serials and credentials everywhere in tracked files and tests.
 - Keep monitoring disabled by default through
   `CRON_CHECK_POWER_STATUS_IS_ENABLED=0`.
 - Use `POWER_CHECK_INTERVAL_SECONDS=60`, `POWER_OFF_FAILED_CHECKS=3` and
@@ -611,8 +611,9 @@ its acknowledgement writes.
 `src/cron/checkPowerStatus/manualStart.js`, `tests/unit/cron.test.js`,
 `tests/unit/startup.test.js`, `tests/unit/shutdown.test.js`,
 `tests/unit/bot-runner.test.js`, `tests/fixtures/worker.mjs`,
-`tests/fixtures/shutdown.mjs`, `src/.env.example`, `README.md`, `AGENTS.md`,
-`docs/development.md`, `docs/monitor-design.md` and `docs/ezviz-research.md`.
+`tests/fixtures/shutdown.mjs`, `src/.env`, `src/.env.dev`, `src/.env.prod`,
+`README.md`, `AGENTS.md`, `docs/development.md`, `docs/monitor-design.md` and
+`docs/ezviz-research.md`.
 
 **Interfaces:** `createMonitorRuntime({ config, directory, now, log, ...deps })`
 asynchronously opens/validates storage, creates a fresh run ID, initializes

@@ -8,7 +8,7 @@ owns separate credentials and a token cache. Only the verified Europe origin
 
 ## Configuration and inference
 
-See [the environment template](../src/.env.example). Home/device IDs are stable
+See [the shared defaults and examples](../src/.env). Home/device IDs are stable
 positive decimal integers; gaps are allowed. Home names are unique after
 trimming and case folding. Device names retain exact spaces and case. Empty
 homes are allowed and remain unknown. Credentials are required for homes with

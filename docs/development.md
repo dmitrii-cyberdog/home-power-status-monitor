@@ -38,9 +38,10 @@ Configuration defaults to `NODE_ENV=local`: load `.env`, then `.env.local` from
 and the isolated `test` mode are accepted. Tests use `NODE_ENV=test` and skip
 dotenv files.
 
-Only `src/.env.example` belongs in source control. Keep credentials, device IDs,
-home names, chat IDs and other private settings in ignored environment files.
-Runtime storage belongs under the ignored `volume` directory.
+Track shared non-secret defaults in `src/.env`, `src/.env.dev` and
+`src/.env.prod`. Keep credentials, device IDs, home names, chat IDs and other
+private settings in ignored local files such as `src/.env.local`. Runtime
+storage belongs under the ignored `volume` directory.
 
 Local editor/agent settings, migration notes, rollback snapshots, caches and
 logs are excluded from the public source tree. Keep these exclusions when adding

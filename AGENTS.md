@@ -76,8 +76,9 @@ step. Use scoped ESLint and Prettier checks for touched files.
 - Tests use `NODE_ENV=test` and must never load private dotenv files.
 - Keep credentials, home identifiers and local machine settings out of source
   control. Preserve current private settings unless their modification is
-  authorized. Never print or commit credentials. Only `src/.env.example` is a
-  public configuration template.
+  authorized. Never print or commit credentials. Track shared non-secret
+  defaults in `src/.env`, `src/.env.dev` and `src/.env.prod`; keep local
+  overrides such as `src/.env.local` and `src/.env.*.local` ignored.
 - The `checkPowerStatus` poller is disabled by default and uses interval
   scheduling. Timestamps are UTC; shutdown drains accepted operations before
   closing storage.
