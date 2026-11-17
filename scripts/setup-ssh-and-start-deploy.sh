@@ -10,7 +10,6 @@ host="$1"
 
 : "${SSH_USER:?Set SSH_USER}"
 : "${SSH_KEY:?Set SSH_KEY}"
-: "${SSH_KNOWN_HOSTS:?Set SSH_KNOWN_HOSTS}"
 : "${GITHUB_SHA:?Set GITHUB_SHA}"
 
 if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -26,7 +25,7 @@ trap 'rm -f -- "$ssh_dir/id_ed25519" "$ssh_dir/known_hosts"; rmdir -- "$ssh_dir"
 
 umask 077
 printf '%s\n' "$SSH_KEY" > "$ssh_dir/id_ed25519"
-printf '%s\n' "$SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+ssh-keyscan -H "$host" > "$ssh_dir/known_hosts"
 
 #
 #

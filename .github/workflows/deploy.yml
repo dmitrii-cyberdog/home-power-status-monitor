@@ -51,7 +51,6 @@ jobs:
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
           SERVER_PROD_MAIN_1: ${{ secrets.SERVER_PROD_MAIN_1 }}
         run:
           bash scripts/setup-ssh-and-start-deploy.sh "$SERVER_PROD_MAIN_1"
