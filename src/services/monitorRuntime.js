@@ -6,6 +6,7 @@ import { createHomeMonitor } from './homeMonitor'
 import { openMonitorStore } from './monitorStore'
 import { createPowerMonitor } from './powerMonitor'
 import { createPowerNotifications } from './powerNotifications'
+import { createTelegramSendGuard } from './telegramApiQueue'
 
 export const createMonitorRuntime = async ({
   config,
@@ -69,7 +70,13 @@ export const createMonitorRuntime = async ({
           access,
           homes,
           log,
-          send: (chatId, text) => api.sendMessage(chatId, text),
+          send: (chatId, text, isAllowed) =>
+            api.sendMessage(
+              chatId,
+              text,
+              undefined,
+              createTelegramSendGuard(isAllowed),
+            ),
           translate: locale => (key, variables) =>
             i18n.t(locale, key, variables),
         })

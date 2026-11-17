@@ -175,3 +175,104 @@ test('group approval shares the grant write, keeps subscriptions and honors disa
   assert.equal(await disabled.authorizeGroup('-1008', 'en'), 'disabled')
   assert.equal(store.readChats().chats['-1008'], undefined)
 })
+
+test('grant IDs separate a cleared grant from a later approval and legacy registries backfill', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-grant-'))
+
+  let store = await openMonitorStore({ directory, homeIds: ['1'] })
+
+  t.after(async () => {
+    await store.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const make = (secret = 'secret') =>
+    createChatAccess({ store, secret, homes: [{ id: '1' }] })
+
+  let access = make()
+
+  await access.initialize()
+  await access.authorize('7', 'secret', 'ru')
+  await access.authorizeGroup('-1007', 'en')
+  await access.setSubscription('7', '1', true, 'ru')
+  await store.close()
+
+  //
+  //
+
+  const file = path.join(directory, 'chats.json')
+
+  const legacy = JSON.parse(await fs.readFile(file, 'utf8'))
+
+  for (const chat of Object.values(legacy.chats)) {
+    delete chat.grantId
+  }
+
+  legacy.chats['8'] = {
+    authorizedGeneration: null,
+    locale: 'en',
+    subscriptions: {},
+  }
+  await fs.writeFile(file, JSON.stringify(legacy))
+
+  store = await openMonitorStore({ directory, homeIds: ['1'] })
+  access = make()
+  assert.deepEqual(store.readChats(), legacy)
+  assert.equal(access.captureGrant('7'), null)
+  await access.initialize()
+
+  const migrated = store.readChats()
+
+  assert.equal(access.isAuthorized('7'), true)
+  assert.equal(access.isAuthorized('-1007'), true)
+  assert.equal(access.isAuthorized('8'), false)
+  assert.equal(access.isSubscribed('7', '1'), true)
+  assert.deepEqual(
+    migrated.chats['7'].subscriptions,
+    legacy.chats['7'].subscriptions,
+  )
+  assert.equal(migrated.chats['7'].locale, 'ru')
+  assert.match(migrated.chats['7'].grantId, /^[0-9a-f-]{36}$/)
+  assert.match(migrated.chats['-1007'].grantId, /^[0-9a-f-]{36}$/)
+  assert.notEqual(migrated.chats['7'].grantId, migrated.chats['-1007'].grantId)
+  assert.equal(migrated.chats['8'].grantId, null)
+
+  //
+  //
+
+  const grant = access.captureGrant('7')
+
+  assert.deepEqual(grant, {
+    generation: migrated.generation,
+    grantId: migrated.chats['7'].grantId,
+  })
+  assert.equal(access.isGrantCurrent('7', grant), true)
+  assert.equal(access.isGrantCurrent('-1007', grant), false)
+  assert.equal(access.captureGrant('9'), null)
+
+  const group = access.captureGrant('-1007')
+
+  await access.authorize('7', 'secret', 'en')
+  await access.authorizeGroup('-1007', 'ru')
+  assert.equal(access.isGrantCurrent('7', grant), true)
+  assert.equal(access.isGrantCurrent('-1007', group), true)
+
+  await access.clearChats('7')
+  assert.equal(access.captureGrant('7'), null)
+  assert.equal(access.isGrantCurrent('7', grant), false)
+  await access.authorize('7', 'secret', 'en')
+  assert.equal(access.isAuthorized('7'), true)
+  assert.equal(access.isGrantCurrent('7', grant), false)
+  assert.notEqual(access.captureGrant('7').grantId, grant.grantId)
+
+  await access.clearChats('-1007')
+  await access.authorizeGroup('-1007', 'en')
+  assert.equal(access.isGrantCurrent('-1007', group), false)
+
+  const current = access.captureGrant('7')
+
+  access = make('rotated')
+  await access.initialize()
+  assert.equal(access.isGrantCurrent('7', current), false)
+  assert.equal(store.readChats().chats['7'].grantId, null)
+})

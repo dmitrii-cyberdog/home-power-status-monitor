@@ -158,9 +158,22 @@ export const validateChatRegistry = value => {
   for (const [id, chat] of Object.entries(v.chats)) {
     if (
       !isChatId(id) ||
-      !exactKeys(chat, ['authorizedGeneration', 'locale', 'subscriptions']) ||
+      !(
+        exactKeys(chat, ['authorizedGeneration', 'locale', 'subscriptions']) ||
+        exactKeys(chat, [
+          'authorizedGeneration',
+          'grantId',
+          'locale',
+          'subscriptions',
+        ])
+      ) ||
       !(
         chat.authorizedGeneration === null || text(chat.authorizedGeneration)
+      ) ||
+      !(
+        !Object.hasOwn(chat, 'grantId') ||
+        chat.grantId === null ||
+        text(chat.grantId)
       ) ||
       !['en', 'ru'].includes(chat.locale) ||
       !object(chat.subscriptions) ||

@@ -50,9 +50,16 @@ export const createChatAccess = ({
     store.updateChats(next => {
       next.chats[id] ??= {
         authorizedGeneration: null,
+        grantId: null,
         locale: localeOf(locale),
         subscriptions: {},
       }
+
+      // A repeated approval keeps the grant; a new one invalidates old sends.
+      if (next.chats[id].authorizedGeneration !== next.generation) {
+        next.chats[id].grantId = randomUUID()
+      }
+
       next.chats[id].authorizedGeneration = next.generation
       next.chats[id].locale = localeOf(locale)
 
@@ -99,6 +106,27 @@ export const createChatAccess = ({
 
           for (const chat of Object.values(registry.chats)) {
             chat.authorizedGeneration = null
+            chat.grantId = null
+          }
+
+          return registry
+        })
+      }
+
+      // Registries written before grant IDs existed keep their active grants.
+      if (
+        Object.values(store.readChats().chats).some(
+          chat => !Object.hasOwn(chat, 'grantId'),
+        )
+      ) {
+        await store.updateChats(registry => {
+          for (const chat of Object.values(registry.chats)) {
+            if (!Object.hasOwn(chat, 'grantId')) {
+              chat.grantId =
+                chat.authorizedGeneration === registry.generation
+                  ? randomUUID()
+                  : null
+            }
           }
 
           return registry
@@ -108,6 +136,27 @@ export const createChatAccess = ({
       ready = true
     },
     isAuthorized,
+    captureGrant(chatId) {
+      const registry = store.readChats()
+
+      if (!isAuthorizedIn(chatId, registry)) {
+        return null
+      }
+
+      return {
+        generation: registry.generation,
+        grantId: registry.chats[String(chatId)].grantId,
+      }
+    },
+    isGrantCurrent(chatId, grant) {
+      const registry = store.readChats()
+
+      return (
+        isAuthorizedIn(chatId, registry) &&
+        registry.generation === grant.generation &&
+        registry.chats[String(chatId)].grantId === grant.grantId
+      )
+    },
     isSubscribed(chatId, homeId) {
       const registry = store.readChats()
 

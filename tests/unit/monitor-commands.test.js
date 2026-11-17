@@ -9,8 +9,10 @@ import { Bot } from 'grammy'
 
 import { createBotRoutes } from '../../src/api/bot/index.js'
 import config from '../../src/config/config.js'
+import { configureTelegramApi } from '../../src/services/botApi.js'
 import { createChatAccess } from '../../src/services/chatAccess.js'
 import { openMonitorStore } from '../../src/services/monitorStore.js'
+import { telegramApiThrottler } from '../../src/services/telegramApiQueue.js'
 
 const notificationFixture = async (
   t,
@@ -20,6 +22,8 @@ const notificationFixture = async (
     admins = [],
     secret = 'test-only',
     check,
+    hold,
+    throttled = false,
   } = {},
 ) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-command-'))
@@ -51,6 +55,8 @@ const notificationFixture = async (
   }
 
   bot.api.config.use(async (_previous, method, payload) => {
+    await hold?.(method, payload)
+
     const result =
       method === 'sendMessage'
         ? {
@@ -67,6 +73,10 @@ const notificationFixture = async (
 
     return { ok: true, result }
   })
+
+  if (throttled) {
+    configureTelegramApi(bot.api)
+  }
 
   bot.use(new I18n(config.botSettings.i18nSettings))
 
@@ -333,6 +343,110 @@ test('clearing a chat during a status refresh revokes access to the result', asy
   )
 })
 
+const longName = 'Home & '.repeat(800).trim()
+
+const sentTexts = replies =>
+  replies
+    .filter(({ method }) => method === 'sendMessage')
+    .map(({ payload }) => payload.text)
+
+const blockQueue = () => {
+  const blockers = Array.from({ length: 10 }, () => Promise.withResolvers())
+
+  const calls = blockers.map(blocker =>
+    telegramApiThrottler(() => blocker.promise, 'sendMessage', {}),
+  )
+
+  return async () => {
+    for (const blocker of blockers) {
+      blocker.resolve()
+    }
+
+    await Promise.all(calls)
+  }
+}
+
+test('an eligible guarded status sends every chunk through the queue', async t => {
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    name: longName,
+    throttled: true,
+  })
+
+  await access.authorize('7', 'test-only', 'en')
+  await send(`/status ${longName}`)
+  assert.ok(sentTexts(replies).length > 1)
+  assert.ok(replies.every(({ payload }) => !('signal' in payload)))
+  assert.deepEqual(replies.at(-1).payload.reply_markup.inline_keyboard, [
+    [{ text: 'Enable notifications', callback_data: 'subscription:on:1' }],
+  ])
+})
+
+for (const [name, revoke] of [
+  ['a grant clear', access => access.clearChats('7')],
+  [
+    'a grant clear followed by a new grant',
+    async access => {
+      await access.clearChats('7')
+      await access.authorize('7', 'test-only', 'en')
+    },
+  ],
+]) {
+  test(`queued status chunks are skipped quietly after ${name}`, async t => {
+    const { access, replies, send } = await notificationFixture(t, {
+      chat: { id: 7, type: 'private', first_name: 'User' },
+      name: longName,
+      throttled: true,
+    })
+
+    await access.authorize('7', 'test-only', 'en')
+
+    const release = blockQueue()
+
+    const handling = send(`/status ${longName}`)
+
+    await new Promise(resolve => {
+      setImmediate(resolve)
+    })
+    await revoke(access)
+    await release()
+    await handling
+    assert.deepEqual(replies, [])
+  })
+}
+
+test('a status grant replaced between chunks stops the remaining chunks', async t => {
+  const first = Promise.withResolvers()
+  const resume = Promise.withResolvers()
+
+  let held = false
+
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    name: longName,
+    throttled: true,
+    hold: async method => {
+      if (method === 'sendMessage' && !held) {
+        held = true
+        first.resolve()
+        await resume.promise
+      }
+    },
+  })
+
+  await access.authorize('7', 'test-only', 'en')
+
+  const handling = send(`/status ${longName}`)
+
+  await first.promise
+  await access.clearChats('7')
+  await access.authorize('7', 'test-only', 'en')
+  resume.resolve()
+  await handling
+  assert.equal(sentTexts(replies).length, 1)
+  assert.match(sentTexts(replies)[0], /Home &amp;/)
+})
+
 test('protected commands gate home reads and group commands require addressing', async () => {
   let authorized = false
   let reads = 0
@@ -357,7 +471,11 @@ test('protected commands gate home reads and group commands require addressing',
   })
   bot.use(
     createBotRoutes({
-      access: { isAuthorized: () => authorized },
+      access: {
+        isAuthorized: () => authorized,
+        captureGrant: () => (authorized ? {} : null),
+        isGrantCurrent: () => authorized,
+      },
       homeMonitor: {
         check: async () => {
           checks++
@@ -424,7 +542,12 @@ test('named status waits for the refresh and renders committed results', async (
   })
   bot.use(
     createBotRoutes({
-      access: { isAuthorized: () => true, isSubscribed: () => false },
+      access: {
+        isAuthorized: () => true,
+        captureGrant: () => ({}),
+        isGrantCurrent: () => true,
+        isSubscribed: () => false,
+      },
       homeMonitor: {
         getStatuses: () => [
           { id: '1', name: 'Family Home', status: 'unknown' },
@@ -497,7 +620,11 @@ test('full status shares authorization, addressing, refresh and named filtering'
   })
   bot.use(
     createBotRoutes({
-      access: { isAuthorized: () => authorized },
+      access: {
+        isAuthorized: () => authorized,
+        captureGrant: () => (authorized ? {} : null),
+        isGrantCurrent: () => authorized,
+      },
       homeMonitor: {
         getStatuses: () => {
           reads++

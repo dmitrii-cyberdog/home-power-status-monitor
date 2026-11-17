@@ -6,6 +6,11 @@ import {
 } from '../../middlewares/bot/accessHandler'
 
 import {
+  createTelegramSendGuard,
+  isTelegramSendSkipped,
+} from '../../services/telegramApiQueue'
+
+import {
   renderFullStatusMessages,
   renderStatusMessages,
 } from './monitorMessages'
@@ -210,6 +215,16 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
     }
 
     if (isStatus) {
+      const chatId = String(ctx.chat.id)
+
+      const grant = access.captureGrant(chatId)
+
+      if (!grant) {
+        await ctx.reply(ctx.t(accessDeniedKey(ctx)))
+
+        return
+      }
+
       const updatedStatuses = await homeMonitor.check()
 
       const render =
@@ -224,7 +239,10 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
         ctx.t.bind(ctx),
       )
 
-      const chatId = String(ctx.chat.id)
+      // Each chunk is dispatched only while the captured grant is current.
+      const signal = createTelegramSendGuard(() =>
+        access.isGrantCurrent(chatId, grant),
+      )
 
       for (const [index, text] of messages.entries()) {
         if (!access.isAuthorized(chatId)) {
@@ -248,7 +266,15 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
           )
         }
 
-        await ctx.reply(text, options)
+        try {
+          await ctx.reply(text, options, signal)
+        } catch (error) {
+          if (isTelegramSendSkipped(error)) {
+            return
+          }
+
+          throw error
+        }
       }
 
       return

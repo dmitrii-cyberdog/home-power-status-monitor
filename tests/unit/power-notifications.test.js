@@ -4,9 +4,14 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
+import { Api } from 'grammy'
+
+import { configureTelegramApi } from '../../src/services/botApi.js'
 import { createChatAccess } from '../../src/services/chatAccess.js'
+import { createMonitorRuntime } from '../../src/services/monitorRuntime.js'
 import { openMonitorStore } from '../../src/services/monitorStore.js'
 import { createPowerNotifications } from '../../src/services/powerNotifications.js'
+import { telegramApiThrottler } from '../../src/services/telegramApiQueue.js'
 
 const fixture = async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-alert-'))
@@ -240,4 +245,146 @@ test('a failed subscription write cannot let drain abandon other accepted sends'
   finish()
   await flushing
   await draining
+})
+
+const runtimeFixture = async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-guard-'))
+
+  let store
+
+  const errors = []
+
+  const runtime = await createMonitorRuntime({
+    config: {
+      monitor: {
+        homes: [{ id: '1', name: 'Home' }],
+        failedChecks: 3,
+        intervalSeconds: 60,
+      },
+      botSettings: { accessSecret: 'secret' },
+    },
+    directory,
+    monitor: {},
+    log: { error: message => errors.push(message) },
+    openStore: async options => {
+      store = await openMonitorStore(options)
+
+      return store
+    },
+  })
+
+  t.after(async () => {
+    runtime.stopNotifications()
+    await runtime.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const { access } = runtime
+
+  await access.authorize('7', 'secret', 'en')
+  await access.setSubscription('7', '1', true, 'en')
+
+  const [recipient] = access.recipients('1', store.readChats())
+
+  await store.updateHome('1', record => {
+    record.eventSequence = 1
+    record.pendingDeliveries = [
+      {
+        eventId: '1:1',
+        sequence: 1,
+        state: 'off',
+        detectedAt: new Date(60000).toISOString(),
+        baseline: false,
+        uncertain: false,
+        ...recipient,
+      },
+    ]
+
+    return record
+  })
+
+  const sent = []
+
+  const api = new Api('1:fake')
+
+  api.config.use(async (_previous, method, payload) => {
+    sent.push({ method, payload })
+
+    return {
+      ok: true,
+      result: { message_id: 1, date: 0, chat: { id: 7, type: 'private' } },
+    }
+  })
+  configureTelegramApi(api)
+  runtime.setTelegramApi(api)
+
+  return { access, errors, runtime, sent, store }
+}
+
+const blockQueue = () => {
+  const blockers = Array.from({ length: 10 }, () => Promise.withResolvers())
+
+  const calls = blockers.map(blocker =>
+    telegramApiThrottler(() => blocker.promise, 'sendMessage', {}),
+  )
+
+  return async () => {
+    for (const blocker of blockers) {
+      blocker.resolve()
+    }
+
+    await Promise.all(calls)
+  }
+}
+
+for (const [name, revoke] of [
+  ['a grant clear', access => access.clearChats('7')],
+  [
+    'a grant clear followed by a new grant and subscription',
+    async access => {
+      await access.clearChats('7')
+      await access.authorize('7', 'secret', 'en')
+      await access.setSubscription('7', '1', true, 'en')
+    },
+  ],
+  [
+    'an unsubscribe followed by a new subscription',
+    async access => {
+      await access.setSubscription('7', '1', false, 'en')
+      await access.setSubscription('7', '1', true, 'en')
+    },
+  ],
+]) {
+  test(`a queued alert is dropped at dispatch after ${name}`, async t => {
+    const { access, errors, runtime, sent, store } = await runtimeFixture(t)
+
+    const release = blockQueue()
+
+    runtime.startNotifications()
+    await new Promise(resolve => {
+      setImmediate(resolve)
+    })
+    await revoke(access)
+    await release()
+    await runtime.drainNotifications()
+
+    assert.deepEqual(sent, [])
+    assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+    assert.deepEqual(errors, [])
+    assert.equal(access.isSubscribed('7', '1'), name !== 'a grant clear')
+  })
+}
+
+test('an eligible alert is still delivered through the guarded queue', async t => {
+  const { errors, runtime, sent, store } = await runtimeFixture(t)
+
+  runtime.startNotifications()
+  await runtime.drainNotifications()
+
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].method, 'sendMessage')
+  assert.deepEqual(Object.keys(sent[0].payload).sort(), ['chat_id', 'text'])
+  assert.equal(sent[0].payload.chat_id, '7')
+  assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+  assert.deepEqual(errors, [])
 })

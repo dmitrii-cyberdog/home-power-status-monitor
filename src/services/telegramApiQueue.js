@@ -9,6 +9,36 @@ const queue = new PQueue({
   strict: true,
 })
 
+const sendGuards = new WeakMap()
+
+//
+//
+
+export const createTelegramSendGuard = isAllowed => {
+  const { signal } = new AbortController()
+
+  sendGuards.set(signal, isAllowed)
+
+  return signal
+}
+
+export const isTelegramSendSkipped = error =>
+  error?.code === 'telegram_send_skipped'
+
+const callAllowed = (previous, method, payload, signal) => {
+  const isAllowed = signal && sendGuards.get(signal)
+
+  // Eligibility is checked again for every dispatch, including auto-retries.
+  if (isAllowed && !isAllowed()) {
+    const error = new Error('Telegram send skipped')
+
+    error.code = 'telegram_send_skipped'
+    throw error
+  }
+
+  return previous(method, payload, signal)
+}
+
 //
 //
 
@@ -48,9 +78,12 @@ export const telegramApiThrottler = async (
   }
 
   try {
-    return await queue.add(() => previous(method, payload, signal), {
-      signal: queueSignal,
-    })
+    return await queue.add(
+      () => callAllowed(previous, method, payload, signal),
+      {
+        signal: queueSignal,
+      },
+    )
   } finally {
     removeAbortListener?.()
   }

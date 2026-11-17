@@ -1,4 +1,5 @@
 import { renderPowerAlert } from '../api/bot/monitorMessages'
+import { isTelegramSendSkipped } from './telegramApiQueue'
 
 const unavailableChat = error =>
   error?.error_code === 403 &&
@@ -85,7 +86,9 @@ export const createPowerNotifications = ({
                 break
               }
 
-              await send(delivery.chatId, text)
+              await send(delivery.chatId, text, () =>
+                access.isDeliveryAllowed(delivery),
+              )
             }
 
             if (!complete) {
@@ -94,6 +97,12 @@ export const createPowerNotifications = ({
 
             await remove(home.id, delivery)
           } catch (error) {
+            // A send refused at dispatch is a stale alert, not a failure.
+            if (isTelegramSendSkipped(error)) {
+              await remove(home.id, delivery)
+              continue
+            }
+
             if (unavailableChat(error)) {
               await access.disableSubscriptions(delivery)
             }

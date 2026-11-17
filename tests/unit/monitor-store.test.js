@@ -114,3 +114,25 @@ test('disk schema rejects corrupt identifiers, dates, counters, verifier and und
     }),
   )
 })
+
+test('chat registry accepts legacy and current grant IDs but rejects malformed ones', () => {
+  const chat = { authorizedGeneration: 'g', locale: 'en', subscriptions: {} }
+
+  const registry = chats => ({
+    ...createChatRegistry(),
+    generation: 'g',
+    chats,
+  })
+
+  for (const grantId of [undefined, null, 'grant']) {
+    const record = grantId === undefined ? chat : { ...chat, grantId }
+
+    assert.doesNotThrow(() => validateChatRegistry(registry({ 7: record })))
+  }
+
+  for (const grantId of ['', 7, {}]) {
+    assert.throws(() =>
+      validateChatRegistry(registry({ 7: { ...chat, grantId } })),
+    )
+  }
+})
