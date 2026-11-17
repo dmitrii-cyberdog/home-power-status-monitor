@@ -8,9 +8,14 @@ export const createHomeMonitor = ({
   runId,
   intervalSeconds,
   now = Date.now,
+  monotonicNow = () => performance.now(),
   log,
 }) => {
   let pending
+
+  let lastStartedAt
+
+  const minimumMs = Math.max(60, intervalSeconds) * 1000
 
   const devices = new Map()
 
@@ -27,22 +32,30 @@ export const createHomeMonitor = ({
 
   return {
     getStatuses,
-    check({ onlyIfStale = false } = {}) {
+    check({ force = false } = {}) {
+      if (pending) {
+        return pending
+      }
+
       if (
-        !pending &&
-        onlyIfStale &&
-        homes.every(home => {
-          const sample = store.readHome(home.id).sample
+        !force &&
+        ((lastStartedAt !== undefined &&
+          monotonicNow() - lastStartedAt < minimumMs) ||
+          homes.every(home => {
+            const sample = store.readHome(home.id).sample
 
-          const age = sample ? now() - Date.parse(sample.observedAt) : null
+            const age = sample ? now() - Date.parse(sample.observedAt) : null
 
-          return age !== null && age >= 0 && age < 60000
-        })
+            return age !== null && age >= 0 && age < minimumMs
+          }))
       ) {
         return Promise.resolve(getStatuses())
       }
 
-      pending ??= (async () => {
+      // The start time is recorded first so failed rounds still apply the cooldown.
+      lastStartedAt = monotonicNow()
+
+      pending = (async () => {
         const observations = await monitor.check()
 
         const results = await Promise.allSettled(

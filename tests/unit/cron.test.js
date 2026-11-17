@@ -31,8 +31,8 @@ test('checkPowerStatus delegates to the shared coordinator', async t => {
   const { default: schedule } =
     await import('../../src/cron/checkPowerStatus/cron.js')
   const task = schedule({
-    check: async options => {
-      assert.deepEqual(options, { onlyIfStale: true })
+    check: async (...args) => {
+      assert.deepEqual(args, [])
 
       return []
     },

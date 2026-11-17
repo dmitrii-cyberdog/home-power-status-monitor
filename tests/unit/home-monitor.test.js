@@ -49,10 +49,7 @@ test('committed rounds coalesce and deliveries retry independently without repla
     now: () => 0,
   })
 
-  await Promise.all([
-    coordinator.check({ onlyIfStale: true }),
-    coordinator.check(),
-  ])
+  await Promise.all([coordinator.check(), coordinator.check({ force: true })])
   assert.equal(calls, 1)
   assert.equal(store.readHome('1').pendingDeliveries.length, 2)
   let fail = true
@@ -80,12 +77,216 @@ test('committed rounds coalesce and deliveries retry independently without repla
   await notifications.drain()
 })
 
-test('scheduled checks use persisted sample freshness; explicit checks always refresh', async t => {
-  const directory = await fs.mkdtemp(
-    path.join(os.tmpdir(), 'monitor-freshness-'),
-  )
+const cadenceFixture = async (t, { intervalSeconds = 60, updateHome } = {}) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-cadence-'))
 
-  let store = await openMonitorStore({ directory, homeIds: ['1'] })
+  const clock = { wall: 0, monotonic: 0 }
+
+  const state = {
+    calls: 0,
+    fail: false,
+    store: await openMonitorStore({ directory, homeIds: ['1'] }),
+  }
+
+  t.after(async () => {
+    await state.store.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const create = () =>
+    createHomeMonitor({
+      store: updateHome
+        ? { readHome: id => state.store.readHome(id), updateHome }
+        : state.store,
+      homes: [{ id: '1', name: 'Home' }],
+      access: { recipients: () => [] },
+      monitor: {
+        check: async () => {
+          state.calls++
+
+          if (state.fail) {
+            throw new Error('provider unavailable')
+          }
+
+          return {
+            homes: [
+              {
+                id: '1',
+                status: 'unknown',
+                observedAt: new Date(clock.wall).toISOString(),
+              },
+            ],
+          }
+        },
+      },
+      runId: 'r',
+      intervalSeconds,
+      now: () => clock.wall,
+      monotonicNow: () => clock.monotonic,
+    })
+
+  const advance = ms => {
+    clock.wall += ms
+    clock.monotonic += ms
+  }
+
+  const reopen = async () => {
+    await state.store.close()
+    state.store = await openMonitorStore({ directory, homeIds: ['1'] })
+  }
+
+  return { clock, state, create, advance, reopen }
+}
+//
+//
+
+test('concurrent status, cron and forced requests share one round', async t => {
+  const { state, create } = await cadenceFixture(t)
+
+  const coordinator = create()
+
+  await Promise.all([
+    coordinator.check(),
+    coordinator.check(),
+    coordinator.check({ force: true }),
+  ])
+  assert.equal(state.calls, 1)
+})
+
+test('ordinary requests wait for the 60-second floor; force bypasses it', async t => {
+  const { state, create, advance } = await cadenceFixture(t)
+
+  const coordinator = create()
+
+  await coordinator.check()
+  assert.equal(state.calls, 1)
+
+  advance(59999)
+
+  const [cached] = await coordinator.check()
+
+  assert.equal(state.calls, 1)
+  assert.equal(cached.observedAt, new Date(0).toISOString())
+
+  advance(1)
+  await coordinator.check()
+  assert.equal(state.calls, 2)
+
+  await coordinator.check({ force: true })
+  assert.equal(state.calls, 3)
+})
+
+test('a longer configured interval sets the minimum cadence', async t => {
+  const { state, create, advance } = await cadenceFixture(t, {
+    intervalSeconds: 120,
+  })
+
+  const coordinator = create()
+
+  await coordinator.check()
+  advance(60000)
+  await coordinator.check()
+  assert.equal(state.calls, 1)
+
+  advance(59999)
+  await coordinator.check()
+  assert.equal(state.calls, 1)
+
+  advance(1)
+  await coordinator.check()
+  assert.equal(state.calls, 2)
+})
+
+test('the in-process cooldown holds even when wall-clock samples look stale', async t => {
+  const { clock, state, create } = await cadenceFixture(t)
+
+  const coordinator = create()
+
+  await coordinator.check()
+  clock.wall += 3600000
+  clock.monotonic += 1000
+  await coordinator.check()
+  assert.equal(state.calls, 1)
+
+  clock.wall -= 7200000
+  await coordinator.check()
+  assert.equal(state.calls, 1)
+})
+
+test('restart honors recent persisted samples and treats future samples as stale', async t => {
+  const { clock, state, create, advance, reopen } = await cadenceFixture(t)
+
+  await create().check()
+  assert.equal(state.calls, 1)
+
+  await reopen()
+  clock.monotonic = 0
+  advance(30000)
+  await create().check()
+  assert.equal(state.calls, 1)
+
+  await reopen()
+  advance(30000)
+  await create().check()
+  assert.equal(state.calls, 2)
+
+  await reopen()
+  clock.wall -= 1000
+  await create().check()
+  assert.equal(state.calls, 3)
+})
+
+test('a failed provider round still applies the cooldown', async t => {
+  const { state, create, advance } = await cadenceFixture(t)
+
+  const coordinator = create()
+
+  state.fail = true
+  await assert.rejects(coordinator.check(), /provider unavailable/)
+
+  const before = state.store.readHome('1')
+
+  for (let index = 0; index < 5; index++) {
+    advance(10000)
+    await coordinator.check()
+  }
+
+  assert.equal(state.calls, 1)
+  assert.deepEqual(state.store.readHome('1'), before)
+
+  advance(10000)
+  await assert.rejects(coordinator.check(), /provider unavailable/)
+  assert.equal(state.calls, 2)
+})
+
+test('a failed store write still applies the cooldown', async t => {
+  let writes = 0
+
+  const { state, create, advance } = await cadenceFixture(t, {
+    updateHome: async () => {
+      writes++
+
+      throw new Error('disk full')
+    },
+  })
+
+  const coordinator = create()
+
+  await assert.rejects(coordinator.check(), /persistence failed/)
+
+  for (let index = 0; index < 5; index++) {
+    advance(10000)
+    await coordinator.check()
+  }
+
+  assert.equal(state.calls, 1)
+  assert.equal(writes, 1)
+  assert.equal(state.store.readHome('1').sample, null)
+})
+
+test('cached reads never advance inference or add another alert', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-cached-'))
+  const store = await openMonitorStore({ directory, homeIds: ['1'] })
 
   t.after(async () => {
     await store.close()
@@ -96,59 +297,63 @@ test('scheduled checks use persisted sample freshness; explicit checks always re
 
   let calls = 0
 
-  const create = () =>
-    createHomeMonitor({
-      store,
-      homes: [{ id: '1', name: 'Home' }],
-      access: { recipients: () => [] },
-      monitor: {
-        check: async () => {
+  const homes = [
+    {
+      id: '1',
+      name: 'Home',
+      offlineDeviceCount: 1,
+      devices: [{ id: '1', name: 'Cam' }],
+    },
+  ]
+
+  const monitor = createPowerMonitor(
+    { failedChecks: 2, homes },
+    {
+      now: () => now,
+      createClient: () => ({
+        observeDevices: async () => {
           calls++
 
-          return {
-            homes: [
-              {
-                id: '1',
-                status: 'unknown',
-                observedAt: new Date(now).toISOString(),
-              },
-            ],
-          }
+          return [{ status: calls === 1 ? 'online' : 'offline' }]
         },
-      },
-      runId: String(calls),
-      intervalSeconds: 60,
-      now: () => now,
-    })
-
-  let coordinator = create()
-
-  await coordinator.check({ onlyIfStale: true })
-  assert.equal(calls, 1)
-  now = 59999
-  await coordinator.check({ onlyIfStale: true })
-  assert.equal(calls, 1)
-  now = 60000
-  await coordinator.check({ onlyIfStale: true })
-  assert.equal(calls, 2)
-  now = 60001
-  await coordinator.check()
-  assert.equal(calls, 3)
-  assert.equal(
-    store.readHome('1').sample.observedAt,
-    new Date(now).toISOString(),
+      }),
+    },
   )
-  await store.close()
-  store = await openMonitorStore({ directory, homeIds: ['1'] })
-  coordinator = create()
-  await coordinator.check({ onlyIfStale: true })
+
+  const coordinator = createHomeMonitor({
+    monitor,
+    store,
+    homes,
+    access: {
+      recipients: () => [
+        { chatId: '1', generation: 'g', subscriptionId: 's', locale: 'en' },
+      ],
+    },
+    runId: 'r',
+    intervalSeconds: 60,
+    now: () => now,
+    monotonicNow: () => now,
+  })
+
+  await coordinator.check()
+
+  for (let round = 0; round < 2; round++) {
+    now += 60000
+    await coordinator.check()
+  }
+
+  const committed = store.readHome('1')
+
+  assert.equal(committed.sample.status, 'off')
+  assert.equal(committed.pendingDeliveries.length, 1)
+
+  for (let index = 0; index < 5; index++) {
+    now += 10000
+    await coordinator.check()
+  }
+
   assert.equal(calls, 3)
-  now += 60000
-  await coordinator.check({ onlyIfStale: true })
-  assert.equal(calls, 4)
-  now -= 1000
-  await coordinator.check({ onlyIfStale: true })
-  assert.equal(calls, 5)
+  assert.deepEqual(store.readHome('1'), committed)
 })
 
 test('online baseline commits decisive fields; unknown diagnostics stay transient', async t => {
@@ -193,6 +398,7 @@ test('online baseline commits decisive fields; unknown diagnostics stay transien
     runId: 'r',
     intervalSeconds: 60,
     now: () => now,
+    monotonicNow: () => now,
     log: { warning: (...args) => warnings.push(args) },
   })
 

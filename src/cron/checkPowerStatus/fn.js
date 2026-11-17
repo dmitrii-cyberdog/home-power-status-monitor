@@ -1,2 +1,1 @@
-export default (log, homeMonitor) => async () =>
-  homeMonitor.check({ onlyIfStale: true })
+export default (log, homeMonitor) => async () => homeMonitor.check()

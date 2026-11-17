@@ -10,7 +10,7 @@ let runtime
 try {
   runtime = await createMonitorRuntime({ config, log })
 
-  const result = await runtime.homeMonitor.check()
+  const result = await runtime.homeMonitor.check({ force: true })
 
   log.notice('checkPowerStatus manual result', result)
 } catch (error) {

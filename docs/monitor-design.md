@@ -17,9 +17,10 @@ retired `CRON_CHECK_POWER_STATUS_TEMPLATE` is ignored.
 
 Polling defaults to disabled. `POWER_CHECK_INTERVAL_SECONDS=60` controls cadence
 when `CRON_CHECK_POWER_STATUS_IS_ENABLED=1` is explicitly configured. Without
-scheduled polling, status commands and the manual launcher still check on
-demand. Provider failures emit fixed diagnostic codes with home/device IDs; raw
-provider responses and credentials are never included in these diagnostics.
+scheduled polling, status commands still poll when results are stale and the
+manual launcher still checks on demand. Provider failures emit fixed diagnostic
+codes with home/device IDs; raw provider responses and credentials are never
+included in these diagnostics.
 
 `POWER_OFF_FAILED_CHECKS=3` requires three consecutive offline observations per
 selected device. Unknown/online observations reset that streak. A home is off
@@ -68,9 +69,10 @@ persistence. The argument is compared exactly, including spaces after the single
 command separator. Use `/status` or `/status Family Home`,
 `/on_notification Family Home` and `/off_notification Family Home`. Home
 arguments are trimmed and matched case-insensitively. An authorized `/status`
-refreshes the shared all-home round immediately, waits for persistence, then
-renders committed results. A named query filters that refreshed snapshot.
-Concurrent status requests and scheduled checks share the in-flight round.
+requests the shared all-home round under the shared cadence below, waits for
+persistence when a round runs, then renders committed results. A named query
+filters that snapshot. Concurrent status requests and scheduled checks share the
+in-flight round.
 
 `/status [home name]` returns a brief summary: current state, a readable
 duration since detection when continuity is supported, and the last
@@ -94,13 +96,21 @@ streaks and diagnostic codes. Device details are transient and do not change the
 stored record schema. Both replies use escaped Telegram HTML, bold headings,
 italic notes, spacing and dividers. Each split message has complete markup.
 
-Scheduled ticks poll only when at least one home's persisted `sample.observedAt`
-is missing or at least 60 seconds old. Recent unknown observations also count as
-updates. Future timestamps trigger a check rather than delaying indefinitely.
-The timestamp survives restart; a failed write never advances it. Explicit
-status/manual checks refresh regardless of age, even when scheduled polling is
-disabled. Each actual round contributes one inference sample, so repeated status
-requests can advance offline streaks sooner than scheduled polling alone.
+Scheduled ticks and both status commands share one cadence. The minimum interval
+is `max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds. A request first joins any
+in-flight round. Otherwise it starts a provider round only when no round started
+in this process within the minimum interval (measured with a monotonic clock)
+and at least one home's persisted `sample.observedAt` is missing or at least the
+minimum interval old. Recent unknown observations also count as updates. Future
+timestamps count as stale rather than delaying indefinitely, while the
+in-process cooldown still applies. The persisted timestamp survives restart; a
+failed write never advances it. A round's start time is recorded before the
+provider call, so failed provider rounds or writes still wait out the cooldown
+instead of retrying in a tight loop. Other requests reply from the latest
+committed results and their existing timestamps without calling the provider or
+writing storage, so cached replies never advance inference or add alerts. Stale
+status requests still poll when scheduled polling is disabled. Only the local
+manual launcher forces a round regardless of cadence; Telegram commands cannot.
 
 In private groups use `/status@BotUsername Family Home` and corresponding
 addressed forms for other commands. Bare protected group commands and unrelated
@@ -165,6 +175,13 @@ For approved recovery of an existing stale lock:
    and chat JSON record.
 4. Start the app using the updated manifest and verify a watch restart drains,
    releases ownership, and reacquires it without repeated startup errors.
+
+Workers with group approval write a `grantId` field into each chat entry of
+`volume/chats.json`; older workers reject that field. To roll back, stop the
+worker and any launcher, keep storage ownership held so nothing else can write,
+and strip `grantId` from the latest valid `chats.json` before starting the older
+worker. Do not restore an older snapshot instead: it could revive grants that
+were cleared since.
 
 Recovery and live restarts require operator approval. Automatic lock stealing is
 deliberately not enabled. A forced termination can still leave a stale lock.

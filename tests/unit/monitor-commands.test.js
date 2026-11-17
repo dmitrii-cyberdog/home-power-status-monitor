@@ -631,7 +631,8 @@ test('full status shares authorization, addressing, refresh and named filtering'
 
           return homes
         },
-        check: async () => {
+        check: async (...args) => {
+          assert.deepEqual(args, [])
           checks++
 
           return homes
