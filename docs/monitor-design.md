@@ -57,9 +57,15 @@ separately; totals stop at the last processed sample. No calendar reports exist.
 
 ## Telegram access and delivery
 
-Set `TG_BOT_ACCESS_SECRET` and authenticate each chat with `/secret <value>`.
-The argument is compared exactly, including spaces after the single command
-separator. Use `/status` or `/status Family Home`,
+Set `TG_BOT_ACCESS_SECRET` and authenticate each private chat with
+`/secret <value>`. Groups never submit the secret: `/secret` in a group is
+refused with a pointer to an admin (the message is still best-effort deleted).
+An allowlisted admin approves a group from a private chat with
+`/authorize_group <chat_id>`, using a negative ID from a trusted source. It
+follows the same serialized grant write as private enrollment, honors disabled
+access, preserves subscriptions on repeat and acknowledges only after
+persistence. The argument is compared exactly, including spaces after the single
+command separator. Use `/status` or `/status Family Home`,
 `/on_notification Family Home` and `/off_notification Family Home`. Home
 arguments are trimmed and matched case-insensitively. An authorized `/status`
 refreshes the shared all-home round immediately, waits for persistence, then
@@ -101,6 +107,10 @@ addressed forms for other commands. Bare protected group commands and unrelated
 messages are ignored. Authorization belongs to the whole chat: all members can
 query and manage that chat's preferences. A migrated group ID needs its own
 grant. Generic start/help remain public and reveal no home information.
+
+Existing group grants survive routine restarts. If the secret has appeared in a
+group, rotate it after rollout and deliberately reapprove trusted groups and
+private chats; rotation invalidates all old grants by design.
 
 Grants survive ordinary restarts. Loading a changed or empty secret invalidates
 grants before producers start, retaining preferences but suspending delivery.

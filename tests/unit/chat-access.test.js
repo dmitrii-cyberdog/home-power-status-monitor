@@ -134,3 +134,44 @@ test('chat clears persist and revoke subscriptions without touching home records
   assert.equal(await access.authorize('-1007', 'secret', 'en'), 'authorized')
   assert.equal(access.isSubscribed('-1007', '1'), false)
 })
+
+test('group approval shares the grant write, keeps subscriptions and honors disabled access', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-group-'))
+  const store = await openMonitorStore({ directory, homeIds: ['1'] })
+
+  t.after(async () => {
+    await store.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const access = createChatAccess({
+    store,
+    secret: 'secret',
+    homes: [{ id: '1' }],
+  })
+
+  assert.equal(await access.authorizeGroup('-1007', 'en'), 'disabled')
+  await access.initialize()
+  assert.equal(access.isAuthorized('-1007'), false)
+  assert.equal(await access.authorizeGroup('-1007', 'ru'), 'authorized')
+  assert.equal(access.isAuthorized('-1007'), true)
+  assert.equal(store.readChats().chats['-1007'].locale, 'ru')
+
+  await access.setSubscription('-1007', '1', true, 'ru')
+
+  const subscription = store.readChats().chats['-1007'].subscriptions['1']
+
+  assert.equal(await access.authorizeGroup('-1007', 'en'), 'authorized')
+  assert.deepEqual(
+    store.readChats().chats['-1007'].subscriptions['1'],
+    subscription,
+  )
+  assert.equal(store.readChats().chats['-1007'].locale, 'en')
+  assert.equal(access.isSubscribed('-1007', '1'), true)
+
+  const disabled = createChatAccess({ store, secret: '', homes: [] })
+
+  await disabled.initialize()
+  assert.equal(await disabled.authorizeGroup('-1008', 'en'), 'disabled')
+  assert.equal(store.readChats().chats['-1008'], undefined)
+})

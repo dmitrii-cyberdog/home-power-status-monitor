@@ -46,6 +46,19 @@ export const createChatAccess = ({
       }))
   }
 
+  const grant = (id, locale) =>
+    store.updateChats(next => {
+      next.chats[id] ??= {
+        authorizedGeneration: null,
+        locale: localeOf(locale),
+        subscriptions: {},
+      }
+      next.chats[id].authorizedGeneration = next.generation
+      next.chats[id].locale = localeOf(locale)
+
+      return next
+    })
+
   const isDeliveryAllowedIn = (delivery, registry) => {
     const homeId = delivery.eventId.split(':')[0]
 
@@ -144,17 +157,16 @@ export const createChatAccess = ({
         return 'invalid'
       }
 
-      await store.updateChats(next => {
-        next.chats[id] ??= {
-          authorizedGeneration: null,
-          locale: localeOf(locale),
-          subscriptions: {},
-        }
-        next.chats[id].authorizedGeneration = next.generation
-        next.chats[id].locale = localeOf(locale)
+      await grant(id, locale)
 
-        return next
-      })
+      return 'authorized'
+    },
+    async authorizeGroup(chatId, locale) {
+      if (!ready || !secret) {
+        return 'disabled'
+      }
+
+      await grant(String(chatId), locale)
 
       return 'authorized'
     },

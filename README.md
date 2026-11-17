@@ -130,20 +130,27 @@ checks while all JSON `sample.observedAt` timestamps are less than 60 seconds
 old. Unknown observations also update this timestamp. Explicit status/manual
 checks bypass the age gate and share any in-flight round.
 
-Authorize each chat with `/secret <value>`. Use `/status [home name]`, or
+Authorize each private chat with `/secret <value>`; the secret is rejected in
+groups. A configured admin approves a group from a private chat with
+`/authorize_group <chat_id>` (a negative group ID taken from a trusted source);
+repeating it keeps the group's subscriptions. Use `/status [home name]`, or
 `/status_full [home name]` for formatted history, totals and device diagnostics,
 `/on_notification home name`, `/off_notification home name`; groups require
 `/status@your_bot_username` and equivalent addressed forms. Grants survive a
 restart with the same secret. Secret rotation invalidates grants while retaining
-preferences. All group members share the chat's access and subscriptions.
+preferences. If the reusable secret has appeared in a group, rotate it after
+rollout and deliberately reapprove trusted groups and private chats; rotation
+invalidates all old grants by design. All group members share the chat's access
+and subscriptions.
 
 In a private chat, `/status <home name>` includes a button to enable or disable
 that home's notifications for the current chat.
 
 Set administrator user IDs in `src/.env.local`. In a private chat, admins can
 run `/clear_chats <chat_id>` for one chat or `/clear_chats all` for the entire
-registry. Cleared chats must authorize again with `/secret` and re-enable their
-subscriptions. Home history and power statistics are preserved.
+registry. Cleared chats must be authorized again (`/secret` in private chats,
+`/authorize_group` for groups) and re-enable their subscriptions. Home history
+and power statistics are preserved.
 
 JSON records live in `volume/homes/<id>.json` and `volume/chats.json`. Only one
 process may own `volume/.monitor.lock`. For stale-lock recovery, first verify

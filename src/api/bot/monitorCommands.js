@@ -1,6 +1,9 @@
 import { Composer, InlineKeyboard } from 'grammy'
 
-import { createAccessHandler } from '../../middlewares/bot/accessHandler'
+import {
+  accessDeniedKey,
+  createAccessHandler,
+} from '../../middlewares/bot/accessHandler'
 
 import {
   renderFullStatusMessages,
@@ -66,6 +69,12 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
 
   composer.command('secret', async ctx => {
     try {
+      if (ctx.chat.type !== 'private') {
+        await ctx.reply(ctx.t('access_group_secret_rejected'))
+
+        return
+      }
+
       const entity = commandEntity(ctx.msg)
 
       const supplied = ctx.msg.text.slice(entity.length + 1)
@@ -219,7 +228,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
 
       for (const [index, text] of messages.entries()) {
         if (!access.isAuthorized(chatId)) {
-          await ctx.reply(ctx.t('access_denied'))
+          await ctx.reply(ctx.t(accessDeniedKey(ctx)))
 
           return
         }

@@ -35,5 +35,38 @@ export const createAdminCommands = ({ access, admins = [] }) => {
     await ctx.reply(ctx.t('admin_chats_cleared', { count }))
   })
 
+  //
+  //
+
+  composer.command('authorize_group', async ctx => {
+    if (ctx.chat.type !== 'private') {
+      return
+    }
+
+    if (!admins.includes(ctx.from?.id)) {
+      await ctx.reply(ctx.t('admin_access_denied'))
+
+      return
+    }
+
+    const target = ctx.match.trim()
+
+    if (!isChatId(target) || !target.startsWith('-')) {
+      await ctx.reply(ctx.t('admin_authorize_group_usage'))
+
+      return
+    }
+
+    const locale = (await ctx.i18n?.getLocale()) ?? 'en'
+
+    const result = await access.authorizeGroup(target, locale)
+
+    await ctx.reply(
+      ctx.t(
+        result === 'authorized' ? 'admin_group_authorized' : `access_${result}`,
+      ),
+    )
+  })
+
   return composer
 }

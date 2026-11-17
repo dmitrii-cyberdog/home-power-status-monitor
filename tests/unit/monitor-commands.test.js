@@ -18,6 +18,7 @@ const notificationFixture = async (
     chat = { id: -1007, type: 'supergroup', title: 'Home' },
     name = 'Family Home',
     admins = [],
+    secret = 'test-only',
     check,
   } = {},
 ) => {
@@ -32,7 +33,7 @@ const notificationFixture = async (
 
   const homes = [{ id: '1', name, status: 'unknown' }]
 
-  const access = createChatAccess({ store, homes, secret: 'test-only' })
+  const access = createChatAccess({ store, homes, secret })
 
   await access.initialize()
 
@@ -158,7 +159,7 @@ test('replying to a notification prompt saves the setting and confirms it', asyn
   await send('Family Home', prompt.message)
   assert.equal(
     replies.at(-1).payload.text,
-    'Authorize this chat with /secret <value> first.',
+    'This group is not authorized. Ask a bot admin to approve it from a private chat.',
   )
   assert.equal(rotatedAccess.recipients('1', store.readChats()).length, 0)
 })
@@ -601,4 +602,96 @@ test('secret arguments remain exact and deletion failure does not change authori
   assert.equal(calls[0].payload.text, 'access_authorized')
   assert.equal(calls[1].method, 'deleteMessage')
   assert.doesNotMatch(JSON.stringify(calls), /exact secret|sentinel/)
+})
+
+test('group chats cannot submit the secret and are directed to an admin', async t => {
+  const { access, chat, replies, send } = await notificationFixture(t)
+
+  for (const type of ['group', 'supergroup']) {
+    chat.type = type
+    replies.length = 0
+
+    await send('/secret@power_test_bot test-only')
+    assert.equal(access.isAuthorized(String(chat.id)), false)
+    assert.equal(replies[0].method, 'sendMessage')
+    assert.match(replies[0].payload.text, /admin/i)
+    assert.equal(replies.at(-1).method, 'deleteMessage')
+    assert.doesNotMatch(JSON.stringify(replies), /test-only/)
+  }
+
+  await send('/status@power_test_bot')
+  assert.match(replies.at(-1).payload.text, /group.*admin/i)
+  assert.doesNotMatch(replies.at(-1).payload.text, /\/secret/)
+})
+
+test('private chats still authorize with the secret', async t => {
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+  })
+
+  await send('/secret test-only')
+  assert.equal(access.isAuthorized('7'), true)
+  assert.equal(replies[0].payload.text, 'Chat authorized.')
+  assert.doesNotMatch(JSON.stringify(replies), /test-only/)
+})
+
+test('only a configured admin in a private chat can approve a group', async t => {
+  const privateChat = { id: 7, type: 'private', first_name: 'User' }
+
+  const ordinary = await notificationFixture(t, {
+    chat: privateChat,
+    admins: [8],
+  })
+
+  await ordinary.send('/authorize_group -1007')
+  assert.equal(ordinary.replies.at(-1).payload.text, 'Admin access required.')
+  assert.equal(ordinary.access.isAuthorized('-1007'), false)
+
+  const group = await notificationFixture(t, { admins: [7] })
+
+  await group.send('/authorize_group@power_test_bot -1007')
+  assert.equal(group.replies.length, 0)
+  assert.equal(group.access.isAuthorized('-1007'), false)
+
+  const { access, replies, send, store } = await notificationFixture(t, {
+    chat: privateChat,
+    admins: [7],
+  })
+
+  for (const text of [
+    '/authorize_group',
+    '/authorize_group 1007',
+    '/authorize_group 7',
+    '/authorize_group 0',
+    '/authorize_group -0',
+    '/authorize_group -1007 extra',
+    '/authorize_group -abc',
+    '/authorize_group -9007199254740992',
+  ]) {
+    await send(text)
+    assert.match(replies.at(-1).payload.text, /Use \/authorize_group/)
+  }
+
+  assert.deepEqual(store.readChats().chats, {})
+
+  await send('/authorize_group -1007')
+  assert.equal(replies.at(-1).payload.text, 'Group authorized.')
+  assert.equal(access.isAuthorized('-1007'), true)
+
+  await access.setSubscription('-1007', '1', true, 'en')
+  await send('/authorize_group -1007')
+  assert.equal(access.isSubscribed('-1007', '1'), true)
+  assert.doesNotMatch(JSON.stringify(replies), /test-only/)
+})
+
+test('group approval is refused while protected access is disabled', async t => {
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    admins: [7],
+    secret: '',
+  })
+
+  await send('/authorize_group -1007')
+  assert.equal(replies.at(-1).payload.text, 'Protected access is disabled.')
+  assert.equal(access.isAuthorized('-1007'), false)
 })
