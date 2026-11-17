@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$#" -ne 2 || -z "$1" || "$2" != main ]]; then
-  echo "Usage: $0 <HOST> main" >&2
+if [[ "$#" -ne 2 || -z "$1" || "$2" != master ]]; then
+  echo "Usage: $0 <HOST> master" >&2
   exit 1
 fi
 
@@ -32,7 +32,7 @@ printf '%s\n' "$SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
 #
 
 for attempt in 1 2 3; do
-  echo "Deploying main (attempt $attempt/3)"
+  echo "Deploying master (attempt $attempt/3)"
 
   if ssh -T -i "$ssh_dir/id_ed25519" \
     -o BatchMode=yes -o IdentitiesOnly=yes \

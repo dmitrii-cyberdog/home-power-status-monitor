@@ -181,7 +181,7 @@ do not contact live Telegram or vendor accounts.
   allowance for the application's 35-second shutdown deadline.
 
 The [deployment workflow](.github/workflows/deploy.yml) runs on pushes to
-`main`. After tests pass, it deploys the tested commit to
+`master`. After tests pass, it deploys the tested commit to
 `~/projects/home-power-status-monitor` and starts or restarts the PM2 app in
 `prod` mode.
 

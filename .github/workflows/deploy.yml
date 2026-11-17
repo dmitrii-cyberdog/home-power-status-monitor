@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [master]
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -54,4 +54,5 @@ jobs:
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
           SERVER_PROD_MAIN_1: ${{ secrets.SERVER_PROD_MAIN_1 }}
         run:
-          bash scripts/setup-ssh-and-start-deploy.sh "$SERVER_PROD_MAIN_1" main
+          bash scripts/setup-ssh-and-start-deploy.sh "$SERVER_PROD_MAIN_1"
+          master

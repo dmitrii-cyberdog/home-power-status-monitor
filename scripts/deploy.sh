@@ -5,26 +5,26 @@ tested_commit=${1:?Pass the commit that passed CI}
 repo=https://github.com/dmitrii-cyberdog/home-power-status-monitor.git
 app_dir="$HOME/projects/home-power-status-monitor"
 
-echo "Deploying main to $app_dir"
+echo "Deploying master to $app_dir"
 
 mkdir -p "$app_dir"
 cd "$app_dir"
 
 if [[ ! -e .git ]]; then
-  git init -b main
+  git init -b master
   git remote add origin "$repo"
 fi
 
 if [[ "$(git config --get remote.origin.url)" != "$repo" ||
-      "$(git branch --show-current)" != main ]]; then
-  echo 'Expected the public home-power-status-monitor repository on main.' >&2
+      "$(git branch --show-current)" != master ]]; then
+  echo 'Expected the public home-power-status-monitor repository on master.' >&2
   exit 1
 fi
 
-git fetch origin refs/heads/main
+git fetch origin refs/heads/master
 
 if [[ "$(git rev-parse FETCH_HEAD)" != "$tested_commit" ]]; then
-  echo 'Skipping deployment because main has moved since CI ran.'
+  echo 'Skipping deployment because master has moved since CI ran.'
   exit 0
 fi
 
@@ -45,7 +45,7 @@ fi
 git merge --ff-only --no-overwrite-ignore "$tested_commit"
 
 if [[ "$(git rev-parse HEAD)" != "$tested_commit" ]]; then
-  echo 'Deployment stopped because the server checkout is ahead of main.' >&2
+  echo 'Deployment stopped because the server checkout is ahead of master.' >&2
   exit 1
 fi
 
