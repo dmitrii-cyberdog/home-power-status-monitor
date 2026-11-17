@@ -124,11 +124,15 @@ overlap; concurrent manual calls share the accepted round. The standalone
 launcher cannot run while a worker owns storage and never sends Telegram.
 Separate manual processes reset offline streaks.
 
-Authorized `/status` and `/status_full` refresh all homes immediately before
-replying; a named query shows only the requested home. Scheduled ticks skip
-checks while all JSON `sample.observedAt` timestamps are less than 60 seconds
-old. Unknown observations also update this timestamp. Explicit status/manual
-checks bypass the age gate and share any in-flight round.
+Scheduled ticks and authorized `/status` and `/status_full` share one cadence of
+at least `max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds and join any in-flight
+round; a named query shows only the requested home. Before the first round after
+a restart, a poll starts only when some JSON `sample.observedAt` is missing,
+future-dated or at least that interval old (unknown observations also update
+it). Later rounds wait for that interval, less one second of slack, since the
+previous round started, even when it failed. Requests inside the interval reply
+from the latest committed results without polling. Only the standalone manual
+launcher forces a check. See [the monitor design](docs/monitor-design.md).
 
 Authorize each private chat with `/secret <value>`; the secret is rejected in
 groups. A configured admin approves a group from a private chat with

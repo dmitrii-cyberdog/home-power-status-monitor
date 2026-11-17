@@ -77,7 +77,10 @@ test('committed rounds coalesce and deliveries retry independently without repla
   await notifications.drain()
 })
 
-const cadenceFixture = async (t, { intervalSeconds = 60, updateHome } = {}) => {
+const cadenceFixture = async (
+  t,
+  { intervalSeconds = 60, latency = 0, updateHome } = {},
+) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-cadence-'))
 
   const clock = { wall: 0, monotonic: 0 }
@@ -107,6 +110,9 @@ const cadenceFixture = async (t, { intervalSeconds = 60, updateHome } = {}) => {
           if (state.fail) {
             throw new Error('provider unavailable')
           }
+
+          // The provider stamps observations after its response latency.
+          advance(latency)
 
           return {
             homes: [
@@ -161,7 +167,7 @@ test('ordinary requests wait for the 60-second floor; force bypasses it', async 
   await coordinator.check()
   assert.equal(state.calls, 1)
 
-  advance(59999)
+  advance(58999)
 
   const [cached] = await coordinator.check()
 
@@ -176,6 +182,27 @@ test('ordinary requests wait for the 60-second floor; force bypasses it', async 
   assert.equal(state.calls, 3)
 })
 
+for (const intervalSeconds of [60, 120]) {
+  test(`cron ticks every ${intervalSeconds} seconds poll each time despite latency and jitter`, async t => {
+    const { clock, state, create } = await cadenceFixture(t, {
+      intervalSeconds,
+      latency: 1500,
+    })
+
+    const coordinator = create()
+
+    for (let tick = 0; tick < 4; tick++) {
+      const at = tick * intervalSeconds * 1000
+
+      clock.wall = at
+      clock.monotonic = Math.max(0, at - 0.5)
+
+      await coordinator.check()
+      assert.equal(state.calls, tick + 1)
+    }
+  })
+}
+
 test('a longer configured interval sets the minimum cadence', async t => {
   const { state, create, advance } = await cadenceFixture(t, {
     intervalSeconds: 120,
@@ -188,7 +215,7 @@ test('a longer configured interval sets the minimum cadence', async t => {
   await coordinator.check()
   assert.equal(state.calls, 1)
 
-  advance(59999)
+  advance(58999)
   await coordinator.check()
   assert.equal(state.calls, 1)
 
