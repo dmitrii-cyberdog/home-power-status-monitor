@@ -325,7 +325,7 @@ export class Request {
       request: {
         requestId,
         //
-        content: res?.data ?? null,
+        ...(config.envName === 'local' ? { content: res?.data ?? null } : {}),
         //
         time: `${Date.now() - startRequest} ms`,
       },

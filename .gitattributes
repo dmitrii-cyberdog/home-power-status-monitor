@@ -2,3 +2,5 @@
 /.yarn/releases/*    binary
 /.yarn/plugins/**/*  binary
 /.pnp.*              binary linguist-generated
+/scripts/deploy.sh                     text eol=lf
+/scripts/setup-ssh-and-start-deploy.sh text eol=lf

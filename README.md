@@ -180,6 +180,18 @@ do not contact live Telegram or vendor accounts.
 - `server.json`: optional single-process PM2 example, with a 40-second stop
   allowance for the application's 35-second shutdown deadline.
 
-No deployment workflow is configured. Run exactly one writer per storage
-directory. See [monitor design](docs/monitor-design.md) and
+The [deployment workflow](.github/workflows/deploy.yml) runs on pushes to
+`main`. After tests pass, it deploys the tested commit to
+`~/projects/home-power-status-monitor` and starts or restarts the PM2 app in
+`prod` mode.
+
+Configure `SSH_USER`, `SSH_KEY` (the SSH private key), `SERVER_PROD_MAIN_1` (the
+host), and `SSH_KNOWN_HOSTS` (the server's verified OpenSSH known-hosts entry)
+as GitHub Actions secrets. Node.js 24 and PM2 must be available to the server's
+SSH login shell. Set the production configuration in
+`~/projects/home-power-status-monitor/src/.env.local` before the first deploy.
+The server fetches the public repository over HTTPS without a GitHub deploy key.
+
+Run exactly one writer per storage directory. See
+[monitor design](docs/monitor-design.md) and
 [development guide](docs/development.md).
