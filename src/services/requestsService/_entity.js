@@ -325,7 +325,7 @@ export class Request {
       request: {
         requestId,
         //
-        status: res?.status ?? null,
+        content: res?.data ?? null,
         //
         time: `${Date.now() - startRequest} ms`,
       },
