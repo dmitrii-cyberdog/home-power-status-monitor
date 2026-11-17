@@ -1,0 +1,37 @@
+{
+  "apps": [
+    {
+      "name": "home-power-status-monitor",
+      "script": "app.js",
+      "cwd": "./src/",
+      "instances": 1,
+      "exec_mode": "fork",
+      "watch": [".", "../system/"],
+      "ignore_watch": ["node_modules", "tests", "volume", "scripts"],
+      "watch_options": {
+        "followSymlinks": false
+      },
+      "autorestart": true,
+      "min_uptime": 5000,
+      "max_restarts": 10,
+      "exp_backoff_restart_delay": 2000,
+      "kill_timeout": 40000,
+      "shutdown_with_message": true,
+      "wait_ready": false,
+      "listen_timeout": 8000,
+      "stop_exit_codes": [0],
+      "max_memory_restart": "2G",
+      "log_date_format": "DD-MM-YYYY HH:mm:ss.SSS Z",
+      "env": {
+        "NODE_ENV": "local"
+      },
+      "env_dev": {
+        "NODE_ENV": "dev"
+      },
+      "env_prod": {
+        "NODE_ENV": "prod"
+      },
+      "node_args": ["--trace-warnings", "--import=extensionless/register"]
+    }
+  ]
+}

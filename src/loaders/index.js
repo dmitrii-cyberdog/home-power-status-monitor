@@ -1,4 +1,7 @@
+import config from '../config'
+
 import { Logger } from '../services/logger'
+import { createMonitorRuntime } from '../services/monitorRuntime'
 
 import botLoader from './bot'
 import cronLoader from './cron'
@@ -12,13 +15,25 @@ export default async (runtime, onBotFailure = () => {}, signal) => {
       return runtime
     }
 
-    runtime.cronTasks = await cronLoader()
+    runtime.monitorInitialization = createMonitorRuntime({
+      config,
+      log: Logger,
+    })
+    runtime.monitorRuntime = await runtime.monitorInitialization
+
+    if (signal?.aborted) {
+      await runtime.monitorRuntime.close()
+
+      return runtime
+    }
+
+    runtime.cronTasks = await cronLoader(runtime.monitorRuntime)
 
     if (signal?.aborted) {
       return runtime
     }
 
-    runtime.botRunner = await botLoader(signal)
+    runtime.botRunner = await botLoader(signal, runtime.monitorRuntime)
 
     if (runtime.botRunner) {
       runtime.botTask = runtime.botRunner.task()

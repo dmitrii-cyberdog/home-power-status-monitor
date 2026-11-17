@@ -47,6 +47,7 @@ const MAX_LOG_DEPTH = 8
 const MAX_LOG_OBJECT_PROPERTIES = 100
 const MAX_LOG_STRING_LENGTH = 10000
 const SENSITIVE_KEY_SUFFIXES = [
+  'appkey',
   'apikey',
   'authorization',
   'cookie',

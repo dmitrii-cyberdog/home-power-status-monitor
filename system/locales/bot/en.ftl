@@ -1,4 +1,59 @@
-start = Home Power Status Monitor is ready. Use /help for the current service status.
-help = Home Power Status Monitor: the service foundation is ready. Device checks, outage notifications, and home status queries are planned and are not available yet.
-general_error = Unknown error occurred! Please try again later.
+﻿start = Home Power Status Monitor is ready. Use /help.
+help = Home Power Status Monitor: use /secret <value> to authorize this chat, /status [home name] for a brief summary, /status_full [home name] for details, /on_notification home name, /off_notification home name. In groups address commands to @BotUsername.
+general_error = Operation failed. Please try again later.
 pending_request_exists = Your previous requests are still processing. Please wait a moment.
+access_denied = Authorize this chat with /secret <value> first.
+access_authorized = Chat authorized.
+access_invalid = Invalid secret.
+access_disabled = Protected access is disabled.
+access_rate_limited = Too many attempts. Try again in a minute.
+subscription_enabled = Notifications enabled.
+subscription_already_enabled = Notifications already enabled.
+subscription_disabled = Notifications disabled.
+subscription_already_disabled = Notifications already disabled.
+monitor_none = No observation
+monitor_baseline = Initial baseline; actual start unknown
+monitor_on = Power on
+monitor_off = Power off
+monitor_unknown = Unknown
+monitor_stale = Stale observation
+monitor_observed = Last observation
+monitor_last_on = Last power on
+monitor_last_off = Last power off
+monitor_duration = Estimated seconds since detection
+monitor_uncertain = Uncertain continuity
+monitor_since = State detected at
+monitor_totals = Cumulative sampled estimates
+monitor_seconds = seconds
+monitor_outages = Detected outages
+monitor_tail = Unobserved tail
+monitor_empty = No homes configured.
+monitor_not_found = Home not found.
+monitor_home_required = Specify a home name.
+monitor_outage = Power outage detected
+monitor_restored = Power restored
+monitor_event = Event
+monitor_not_observed = Not observed
+monitor_status_unknown = Power status unknown
+monitor_last_confirmed = Last confirmed
+monitor_continuity_unknown = Continuous duration unknown
+monitor_power_for = { $state } for { $duration } (since detection)
+monitor_less_minute = less than a minute
+monitor_minutes = { $count } { $count ->
+    [one] minute
+   *[other] minutes
+    }
+monitor_hours = { $count } { $count ->
+    [one] hour
+   *[other] hours
+    }
+monitor_days = { $count } { $count ->
+    [one] day
+   *[other] days
+    }
+monitor_devices = Devices
+monitor_device_online = Online
+monitor_device_offline = Offline
+monitor_device_unknown = Unknown
+monitor_offline_streak = Consecutive offline checks
+monitor_diagnostic = Diagnostic

@@ -13,25 +13,26 @@ The application must run with `src` as its working directory. Paths to `system`
 and `volume` depend on that directory. The root start script and PM2 example
 already set it.
 
-The current code is a service foundation. Home/provider discovery, polling,
-electricity inference, JSON persistence and home-status commands are future
-work. See `docs/monitor-design.md`.
+The worker implements EZVIZ polling, electricity inference, JSON history,
+secret-authorized home commands and durable notifications. See
+`docs/monitor-design.md`.
 
 ## Repository map
 
 - `src/app.js`: process lifecycle and bounded graceful shutdown.
 - `src/config`: environment loading and runtime configuration.
 - `src/loaders`: cron scheduler and optional Telegram polling runner.
-- `src/cron/checkPowerStatus`: UTC schedule, placeholder body and manual
+- `src/cron/checkPowerStatus`: interval schedule, shared coordinator and manual
   launcher.
-- `src/api/bot`: bot start/help commands; there is no HTTP server.
+- `src/api/bot`: bot start/help commands; authorized monitor commands; there is
+  no HTTP server.
 - `src/middlewares/bot`: update logging, bot backpressure and errors.
 - `src/services`: logger, cron tracking, Telegram setup/queue and generic HTTP
   request transport.
 - `src/utils`: reusable common, time, language, response and flow utilities.
 - `system/locales/bot`: English and Russian Fluent messages.
 - `tests/unit`, `tests/fixtures`: automated tests and controlled subprocesses.
-- `volume`: ignored runtime storage; currently unused.
+- `volume`: ignored JSON history, chat registry and exclusive ownership lock.
 
 ## Commands
 
@@ -68,21 +69,23 @@ step. Use scoped ESLint and Prettier checks for touched files.
 
 ## Configuration, data and localization
 
-- Load `src/.env`, then `.env.dev` or `.env.prod`, then `.env.local`. Exported
-  process variables take precedence over all files. `NODE_ENV=production`
-  selects prod; development is the default.
+- Default `NODE_ENV=local` loads `src/.env`, then `.env.local`. `NODE_ENV=dev`
+  or `NODE_ENV=prod` inserts `.env.dev` or `.env.prod` before `.env.local`.
+  Exported process variables take precedence. Use only `local`, `dev`, `prod`
+  and isolated `test`; select the mode before dotenv loading.
 - Tests use `NODE_ENV=test` and must never load private dotenv files.
 - Keep credentials, home identifiers and local machine settings out of source
   control. Preserve current private settings unless their modification is
   authorized. Never print or commit credentials. Only `src/.env.example` is a
   public configuration template.
-- The `checkPowerStatus` cron is a disabled boilerplate, not a working provider
-  check. Cron uses UTC and shutdown drains accepted operations.
+- The `checkPowerStatus` poller is disabled by default and uses interval
+  scheduling. Timestamps are UTC; shutdown drains accepted operations before
+  closing storage.
 - Do not call Telegram or external providers during automated tests.
 - Keep English and Russian Fluent keys synchronized and preserve variables/tags.
-- Persist future transition timestamps in UTC and keep uncertain observations
-  separate from confirmed electricity state.
-- Future JSON persistence requires one writer per persistent storage directory.
+- Persist transition timestamps in UTC and keep uncertain observations separate
+  from confirmed electricity state.
+- JSON persistence requires one writer per persistent storage directory.
 
 ## Working tree safety
 

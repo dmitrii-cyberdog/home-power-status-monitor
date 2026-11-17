@@ -1,16 +1,23 @@
-import { flushLogger, Logger } from '../../services/logger'
+import config from '../../config'
 
-import fn from './fn'
+import { flushLogger, Logger } from '../../services/logger'
+import { createMonitorRuntime } from '../../services/monitorRuntime'
+import { closeRequestAgents } from '../../services/requestsService'
 
 const log = new Logger({ script: 'manual_checkPowerStatus' })
+let runtime
 
 try {
-  const result = await fn(log)()
+  runtime = await createMonitorRuntime({ config, log })
+
+  const result = await runtime.homeMonitor.check()
 
   log.notice('checkPowerStatus manual result', result)
 } catch (error) {
   log.error('checkPowerStatus manual run failed', { error })
   process.exitCode = 1
 } finally {
+  await runtime?.close()
+  closeRequestAgents()
   await flushLogger()
 }

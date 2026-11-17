@@ -19,7 +19,7 @@ test('enabled cron loader registers checkPowerStatus', async t => {
   config.cron.checkPowerStatus.isEnabled = true
 
   const { default: loadCron } = await import('../../src/loaders/cron.js')
-  const tasks = await loadCron()
+  const tasks = await loadCron({ homeMonitor: { check: async () => [] } })
 
   t.after(() => Promise.all(tasks.map(task => task.destroy())))
 
@@ -27,20 +27,24 @@ test('enabled cron loader registers checkPowerStatus', async t => {
   assert.equal(tasks[0].name, 'checkPowerStatus')
 })
 
-test('checkPowerStatus creates a runnable, destroyable placeholder task', async t => {
+test('checkPowerStatus delegates to the shared coordinator', async t => {
   const { default: schedule } =
     await import('../../src/cron/checkPowerStatus/cron.js')
-  const task = schedule()
+  const task = schedule({
+    check: async options => {
+      assert.deepEqual(options, { onlyIfStale: true })
+
+      return []
+    },
+  })
 
   t.after(() => task.destroy())
 
   assert.equal(task.name, 'checkPowerStatus')
-  assert.deepEqual(await task.execute(), {
-    info: 'checkPowerStatus is not implemented yet',
-  })
+  assert.deepEqual(await task.execute(), [])
 })
 
-test('invalid power check schedule fails clearly', async t => {
+test('retired power check schedule is ignored', async t => {
   const original = config.cron.checkPowerStatus.startTemplate
 
   t.after(() => {
@@ -52,7 +56,10 @@ test('invalid power check schedule fails clearly', async t => {
   const { default: schedule } =
     await import('../../src/cron/checkPowerStatus/cron.js')
 
-  assert.throws(() => schedule(), /checkPowerStatus.*cron/i)
+  const task = schedule({ check: async () => [] })
+
+  t.after(() => task.destroy())
+  assert.deepEqual(await task.execute(), [])
 })
 
 test('cron drain waits for accepted operations', async () => {

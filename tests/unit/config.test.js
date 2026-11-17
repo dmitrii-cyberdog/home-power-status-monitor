@@ -17,10 +17,19 @@ const loadConfig = (t, overrides = {}, files = {}) => {
     writeFileSync(path.join(directory, name), content)
   }
 
-  const environment = { ...process.env, NODE_ENV: 'development' }
+  const environment = { ...process.env }
+
+  delete environment.NODE_ENV
+
+  for (const key of Object.keys(environment)) {
+    if (/^(HOME_|DEVICE_|EZVIZ_|POWER_)/.test(key)) {
+      delete environment[key]
+    }
+  }
 
   for (const key of [
     'TG_BOT_TOKEN',
+    'TG_BOT_ACCESS_SECRET',
     'DEFAULT_LOCALE',
     'CRON_CHECK_POWER_STATUS_IS_ENABLED',
     'CRON_CHECK_POWER_STATUS_TEMPLATE',
@@ -58,14 +67,13 @@ test('configuration has no HTTP settings and defaults to disabled bot and cron',
   assert.equal(config.botSettings.token, '')
   assert.deepEqual(config.cron.checkPowerStatus, {
     isEnabled: false,
-    startTemplate: '* * * * *',
   })
 })
 
-test('development loads base settings and the dev overlay', t => {
+test('dev loads base settings and the dev overlay', t => {
   const result = loadConfig(
     t,
-    {},
+    { NODE_ENV: 'dev' },
     {
       '.env': 'DEFAULT_LOCALE=ru\nTG_BOT_TOKEN=base\n',
       '.env.dev': 'TG_BOT_TOKEN=dev\n',
@@ -81,10 +89,10 @@ test('development loads base settings and the dev overlay', t => {
   assert.equal(config.botSettings.token, 'dev')
 })
 
-test('production loads the prod overlay instead of dev', t => {
+test('prod loads the prod overlay instead of dev', t => {
   const result = loadConfig(
     t,
-    { NODE_ENV: 'production' },
+    { NODE_ENV: 'prod' },
     {
       '.env': 'TG_BOT_TOKEN=base\n',
       '.env.dev': 'TG_BOT_TOKEN=dev\n',
@@ -96,10 +104,50 @@ test('production loads the prod overlay instead of dev', t => {
   assert.equal(JSON.parse(result.stdout).botSettings.token, 'prod')
 })
 
-test('local settings override base and selected environment settings', t => {
+test('local is the default and never loads server overlays', t => {
   const result = loadConfig(
     t,
     {},
+    {
+      '.env': 'TG_BOT_TOKEN=base\n',
+      '.env.dev': 'TG_BOT_TOKEN=dev\n',
+      '.env.prod': 'TG_BOT_TOKEN=prod\n',
+    },
+  )
+
+  assert.equal(result.status, 0, result.stderr)
+
+  const config = JSON.parse(result.stdout)
+
+  assert.equal(config.envName, 'local')
+  assert.equal(config.isDebug, true)
+  assert.equal(config.botSettings.token, 'base')
+})
+
+test('supported modes select debug logging and reject legacy mode names', t => {
+  for (const mode of ['local', 'dev', 'prod', 'test']) {
+    const result = loadConfig(t, { NODE_ENV: mode })
+
+    assert.equal(result.status, 0, result.stderr)
+
+    const config = JSON.parse(result.stdout)
+
+    assert.equal(config.envName, mode)
+    assert.equal(config.isDebug, ['local', 'dev'].includes(mode))
+  }
+
+  for (const mode of ['development', 'production', 'invalid']) {
+    const result = loadConfig(t, { NODE_ENV: mode })
+
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /NODE_ENV must be local, dev, prod or test/)
+  }
+})
+
+test('local settings override base and selected environment settings', t => {
+  const result = loadConfig(
+    t,
+    { NODE_ENV: 'dev' },
     {
       '.env': 'TG_BOT_TOKEN=base\n',
       '.env.dev': 'TG_BOT_TOKEN=dev\n',

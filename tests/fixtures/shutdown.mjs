@@ -62,12 +62,57 @@ const modules = {
   './loaders': {
     default: async (runtime, _onBotFailure, signal) => {
       signal.addEventListener('abort', () => record('startup:abort'))
+
+      if (scenario === 'startup-rejected') {
+        runtime.monitorInitialization = Promise.reject(
+          new Error('ownership unavailable'),
+        )
+
+        await runtime.monitorInitialization
+      }
+
       runtime.cronTasks = [cronTask]
+      const monitorRuntime = {
+        stopNotifications: () => record('notifications:stop'),
+        drainNotifications: () => step('notifications'),
+        close: () => step('store'),
+      }
+
+      if (scenario === 'startup-pending') {
+        runtime.monitorInitialization = pending
+      } else if (scenario === 'startup-delayed') {
+        runtime.monitorInitialization = new Promise(resolve => {
+          setTimeout(() => {
+            runtime.monitorRuntime = monitorRuntime
+            resolve(monitorRuntime)
+          }, 30)
+        })
+      } else {
+        runtime.monitorRuntime = monitorRuntime
+      }
 
       // Mimic an SDK timer that remains referenced even after cleanup succeeds.
       setInterval(() => {}, 60000)
       setImmediate(() => {
-        if (scenario === 'fatal') {
+        if (scenario === 'ipc-ignored') {
+          process.emit('message', 'unrelated')
+          process.emit('message', { type: 'shutdown' })
+          record('unrelated:sent')
+          process.emit('SIGINT')
+        } else if (
+          ['ipc', 'ipc-repeat', 'startup-pending', 'startup-delayed'].includes(
+            scenario,
+          )
+        ) {
+          process.emit('message', 'shutdown')
+
+          if (scenario === 'ipc-repeat') {
+            process.emit('message', 'shutdown')
+            process.emit('SIGTERM')
+          }
+
+          return
+        } else if (scenario === 'fatal') {
           process.emit('uncaughtException', new Error('test failure'))
         } else {
           process.emit('SIGINT')

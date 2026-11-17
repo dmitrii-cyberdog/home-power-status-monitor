@@ -51,7 +51,7 @@ const drainCronTasks = async tasks => {
 }
 
 const shutdown = signal => {
-  if (!['SIGTERM', 'SIGINT'].includes(signal)) {
+  if (!['SIGTERM', 'SIGINT', 'shutdown'].includes(signal)) {
     shutdownWithError = true
   }
 
@@ -63,7 +63,7 @@ const shutdown = signal => {
 
   let phase = 'drain'
 
-  const pendingDrains = new Set(['bot', 'cron'])
+  const pendingDrains = new Set(['bot', 'cron', 'notifications'])
 
   const deadlineId = setTimeout(() => {
     Logger.error('Application shutdown timed out', {
@@ -83,6 +83,7 @@ const shutdown = signal => {
   shutdownPromise = (async () => {
     Logger.notice('Application shutdown started', { signal })
     shutdownController.abort()
+    runtime.monitorRuntime?.stopNotifications()
 
     let timedOut = false
 
@@ -93,6 +94,17 @@ const shutdown = signal => {
       : Promise.resolve()
 
     const cronDrain = drainCronTasks(runtime.cronTasks)
+    const notificationDrain = (async () => {
+      try {
+        await runtime.monitorInitialization
+      } catch {
+        // Startup reports initialization failures; no notification producer exists.
+        return
+      }
+
+      runtime.monitorRuntime?.stopNotifications()
+      await runtime.monitorRuntime?.drainNotifications()
+    })()
 
     let timeoutId
     const timeout = new Promise(resolve => {
@@ -105,7 +117,7 @@ const shutdown = signal => {
     const drain = (async () => {
       const drainNames = [...pendingDrains]
       const drainResults = await Promise.allSettled(
-        [botDrain, cronDrain].map((task, index) =>
+        [botDrain, cronDrain, notificationDrain].map((task, index) =>
           task.finally(() => pendingDrains.delete(drainNames[index])),
         ),
       )
@@ -125,6 +137,8 @@ const shutdown = signal => {
       if (!timedOut) {
         phase = 'telegram'
         await drainTelegramApiQueue()
+        phase = 'storage'
+        await runtime.monitorRuntime?.close()
       }
     })()
 
@@ -225,6 +239,12 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
   })
 }
 
+process.on('message', message => {
+  if (message === 'shutdown') {
+    void shutdown('shutdown')
+  }
+})
+
 process.once('uncaughtException', error => {
   Logger.critical('Uncaught exception', { error })
   void shutdown('uncaught_exception')
@@ -233,6 +253,10 @@ process.once('uncaughtException', error => {
 process.once('unhandledRejection', error => {
   Logger.critical('Unhandled promise rejection', { error })
   void shutdown('unhandled_rejection')
+})
+
+process.once('beforeExit', () => {
+  void shutdown('SIGTERM')
 })
 
 //

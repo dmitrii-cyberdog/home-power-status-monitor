@@ -1,16 +1,20 @@
+Implementation note (2026-11-17): the provider, inference and persistent monitor
+are implemented locally. See [monitor operations](monitor-design.md). Automated
+checks use fake transports; live account and physical outage acceptance remain
+unverified. The research below preserves the original evidence and its limits.
+
 # EZVIZ integration research
 
-Researched on 2026-11-16 for an EZVIZ account registered in Czechia, Europe.
-This is research and a proposed configuration contract, not an implemented
-integration. Account evidence supplied by the user is distinguished below from
-checks performed by the agent.
+Research baseline: 2026-11-16, covering the international European API. This
+document records the original API findings and configuration design. See
+[monitor operations](monitor-design.md) for implemented behavior.
 
-## Current project
+## Integration boundaries
 
-`src/config/config.js` loads environment files but does not discover homes or
-devices. `src/cron/checkPowerStatus/fn.js` is a placeholder. The old
-`HOME_1_EZVIZ` and `HOME_1_XIAOMI_SMART` entries exist only as documentation
-examples. There is no existing provider implementation to migrate.
+`src/config/config.js` loads environment files and discovers configured homes
+and devices. `src/cron/checkPowerStatus/fn.js` delegates to the shared monitor.
+The retired `HOME_1_EZVIZ` and `HOME_1_XIAOMI_SMART` settings are unsupported;
+use the numbered home/device settings below.
 
 The existing request service supports form-encoded POST requests through
 `Request.postXwwwForm`. Provider transport can reuse it; power inference belongs
@@ -31,35 +35,27 @@ The [international token API](https://open.ys7.com/help/en/473) documents:
 - `expireTime` is a Unix timestamp in milliseconds.
 - The token is valid only for the region identified by `areaDomain`.
 
-For this European account, use the returned regional domain for device calls. Do
-not copy the Singapore host shown in device examples or assume that the Chinese
+For European accounts, use the returned regional domain for device calls. Do not
+copy the Singapore host shown in device examples or assume that the Chinese
 `open.ys7.com` API hosts the account. Validate the returned HTTPS origin against
 supported EZVIZ regional origins before sending the token to it. Cache the token
 until shortly before its returned expiry; refresh once and retry once on
 application code `10002`. Share token acquisition between requests using the
 same credentials. Do not fetch a new token for every device check.
 
-### Europe endpoint and user-provided verification
+### Europe endpoint and verification limits
 
 Save `https://ieuopen.ezvizlife.com` as **EZVIZ Europe**. The private
 environment setting is `HOME_1_EZVIZ_API_BASE_URL` for home 1; each home has its
-own credentials and regional API origin without an endpoint path. Runtime
-support for these settings is not implemented yet. When token acquisition
-supplies `areaDomain`, verify that it matches this configured region before
-using the token.
+own credentials and regional API origin without an endpoint path. When token
+acquisition supplies `areaDomain`, verify that it matches this configured region
+before using the token.
 
-On 2026-11-16, the user supplied a successful response from
-`https://ieuopen.ezvizlife.com/api/lapp/device/list`: application code `200`,
-three devices, two with `status: 0` and one with `status: 1`. The user confirmed
-that both devices reporting `0` were offline. This supports the offline mapping
-and demonstrates account-list access through the European endpoint. Device names
-and serials remain private and are intentionally omitted here.
-
-This evidence was supplied by the user, not obtained through an agent API call.
-It does not yet verify token renewal, multi-page polling, power inference or
-physical electricity state. The response's `updateTime` fields have no
-documented timezone or status-freshness guarantee here; do not treat them as
-electrical transition timestamps.
+Live account responses, camera inventories, names and serials are private and
+are not included in this document. Automated checks do not verify live token
+renewal, multi-page polling, power inference or physical electricity state. The
+response's `updateTime` fields have no documented timezone or status-freshness
+guarantee here; do not treat them as electrical transition timestamps.
 
 The [device query API](https://open.ys7.com/help/en/476) provides:
 
@@ -95,11 +91,10 @@ consumer login credentials are not a replacement for application credentials.
 
 Whether the existing consumer account's cameras are directly available to that
 application, or need an additional authorization/linking step, requires account
-verification for the implementation's token flow. The user's successful list
-response confirms access with the credentials/token they used, but does not
-establish how that token was acquired. Do not automatically unbind, rebind or
-add cameras. The agent has not performed account login, device changes or live
-API calls.
+verification for the implementation's token flow. Successful list access alone
+does not establish how a token was acquired. Do not automatically unbind, rebind
+or add cameras. The agent has not performed account login, device changes or
+live API calls.
 
 The English documentation requires JavaScript. Its relevant pages were rendered
 with Playwright; Context7's available EZVIZ documentation did not cover the
@@ -215,11 +210,12 @@ online, one offline and one unknown is insufficient either way.
 At a 60-second interval, three offline samples normally take roughly 2–3 minutes
 after loss, plus request duration and the vendor's own status delay. This is not
 an exact electrical transition time. Internet loss also makes devices offline;
-the user explicitly accepts treating confirmed device-offline evidence as
-assumed power loss. Battery or UPS-backed devices may behave differently.
+the monitor treats confirmed device-offline evidence as assumed power loss.
+Battery or UPS-backed devices may behave differently.
 
-State and streaks live only in memory. A one-shot manual run starts fresh;
-repeated separate launches cannot accumulate confirmation samples.
+Inference streaks live only in memory; confirmed history is persisted by the
+monitor store. A one-shot manual run starts with fresh streaks; repeated
+separate launches cannot accumulate confirmation samples.
 
 ## Integration approaches
 

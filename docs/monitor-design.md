@@ -1,93 +1,175 @@
-# Planned home electricity monitor
+﻿# Home electricity monitor
 
-This document describes future development. The current bootstrap does not poll
-devices, persist homes, or send outage notifications.
+The worker polls the complete paginated EZVIZ account list once per configured
+home and round. It selects cameras by exact, case-sensitive NAME, optionally
+cross-checking SERIAL. Other account cameras never affect inference. Each home
+owns separate credentials and a token cache. Only the verified Europe origin
+`https://ieuopen.ezvizlife.com` is supported.
 
-## Purpose
+## Configuration and inference
 
-Track evidence of electricity availability at named homes through external
-devices such as smart cameras and routers. Save detected off/on transitions and
-answer Telegram group queries by home name.
+See [the environment template](../src/.env.example). Home/device IDs are stable
+positive decimal integers; gaps are allowed. Home names are unique after
+trimming and case folding. Device names retain exact spaces and case. Empty
+homes are allowed and remain unknown. Credentials are required for homes with
+devices. Global EZVIZ credentials and obsolete provider fields are rejected. The
+retired `CRON_CHECK_POWER_STATUS_TEMPLATE` is ignored.
 
-## Environment configuration
+Polling defaults to disabled. `POWER_CHECK_INTERVAL_SECONDS=60` controls cadence
+when `CRON_CHECK_POWER_STATUS_IS_ENABLED=1` is explicitly configured. Without
+scheduled polling, status commands and the manual launcher still check on
+demand. Provider failures emit fixed diagnostic codes with home/device IDs; raw
+provider responses and credentials are never included in these diagnostics.
 
-Homes use stable numeric IDs, without requiring contiguous numbering:
+`POWER_OFF_FAILED_CHECKS=3` requires three consecutive offline observations per
+selected device. Unknown/online observations reset that streak. A home is off
+when K devices qualify, where `HOME_<id>_POWER_OFF_OFFLINE_DEVICE_COUNT`
+defaults to 1; -1 means all N devices. Recovery requires N-K+1 online devices.
+Insufficient evidence is unknown, preserving the last decisive state separately.
+A changed resolved serial resets a name-only selector's streak.
+Provider/auth/pagination failures are unknown and never imply an outage or
+recovery.
 
-```dotenv
-HOME_1_NAME=Apartment
-HOME_1_EZVIZ=provider-specific-settings
-HOME_1_XIAOMI_SMART=provider-specific-settings
+Offline cameras can indicate an internet outage as well as lost electricity.
+Timestamps are UTC local detection times; they do not prove the vendor's data
+freshness or the physical switching time.
 
-HOME_3_NAME=Parents
-HOME_3_EZVIZ=provider-specific-settings
+## Persistence and estimates
+
+`volume/homes/<id>.json` retains observations, last on/off detections,
+cumulative sampled on/off/uncertain milliseconds, outage count, sequence and
+pending alerts. `volume/chats.json` stores a salted scrypt verifier,
+authorization generation, chat grants and subscriptions. Credentials and
+provider tokens are not stored. Each update uses a same-directory temporary file
+and atomic rename before the in-memory snapshot changes. Corrupt records fail
+startup without resetting data. Removed home files remain untouched. Renaming a
+home preserves its history; never reuse an ID for another physical home.
+
+An initial on/off result is a baseline with unknown actual start. Initial off
+sends an outage alert; initial on does not send restoration. Equal decisive
+samples in one process run within two intervals contribute to on/off estimates.
+Other elapsed intervals count as uncertain. Clock reversal never subtracts or
+double-counts time. Restart resets streaks and exposes current state as unknown
+until a new sample commits. An unchanged state after restart sends no event.
+Unknown gaps interrupt continuous-duration claims until a new episode starts.
+Results older than two intervals are stale. Unobserved tail time is displayed
+separately; totals stop at the last processed sample. No calendar reports exist.
+
+## Telegram access and delivery
+
+Set `TG_BOT_ACCESS_SECRET` and authenticate each chat with `/secret <value>`.
+The argument is compared exactly, including spaces after the single command
+separator. Use `/status` or `/status Family Home`,
+`/on_notification Family Home` and `/off_notification Family Home`. Home
+arguments are trimmed and matched case-insensitively. An authorized `/status`
+refreshes the shared all-home round immediately, waits for persistence, then
+renders committed results. A named query filters that refreshed snapshot.
+Concurrent status requests and scheduled checks share the in-flight round.
+
+`/status [home name]` returns a brief summary: current state, a readable
+duration since detection when continuity is supported, and the last
+opposite-state detection. For example:
+
+```text
+Family Home
+Power on for 2 days 3 hours (since detection)
+Last power off: 2026-11-17 18:10 UTC
 ```
 
-These are illustrative placeholders, not accepted provider credential formats.
-Research official APIs and authentication requirements before implementing each
-adapter. A missing provider setting skips that provider. A configured provider
-without an implemented adapter should produce a clear configuration error.
+Missing history is shown as not observed. An online camera initializes `lastOn`
+and the decisive state, not an invented `lastOff`. Unknown results show unknown
+current power, with the last confirmed state when available. Gaps and restarts
+can leave continuous duration unknown even after a fresh decisive observation.
 
-Configuration must define duplicate names and case-insensitive lookup behavior.
-Use numeric IDs for storage paths; never construct paths from home display
-names.
+`/status_full [home name]` uses the same access, refresh and filtering rules. It
+adds observation/detection timestamps, baseline and uncertainty notes, sampled
+totals, outage count, unobserved tail, and current device statuses, offline
+streaks and diagnostic codes. Device details are transient and do not change the
+stored record schema. Both replies use escaped Telegram HTML, bold headings,
+italic notes, spacing and dividers. Each split message has complete markup.
 
-## Observation and power inference
+Scheduled ticks poll only when at least one home's persisted `sample.observedAt`
+is missing or at least 60 seconds old. Recent unknown observations also count as
+updates. Future timestamps trigger a check rather than delaying indefinitely.
+The timestamp survives restart; a failed write never advances it. Explicit
+status/manual checks refresh regardless of age, even when scheduled polling is
+disabled. Each actual round contributes one inference sample, so repeated status
+requests can advance offline streaks sooner than scheduled polling alone.
 
-Provider adapters should return timestamped online/offline observations or an
-unknown/error result. Invalid credentials, timeouts, vendor outages and stale
-data are not evidence that home electricity is off.
+In private groups use `/status@BotUsername Family Home` and corresponding
+addressed forms for other commands. Bare protected group commands and unrelated
+messages are ignored. Authorization belongs to the whole chat: all members can
+query and manage that chat's preferences. A migrated group ID needs its own
+grant. Generic start/help remain public and reveal no home information.
 
-Device reachability alone cannot distinguish electricity loss from home internet
-failure. A router or camera may also remain online on a UPS. Define aggregation
-across devices/providers, confirmation windows, recovery rules and flapping
-suppression before labeling a home as power-off or power-on.
+Grants survive ordinary restarts. Loading a changed or empty secret invalidates
+grants before producers start, retaining preferences but suspending delivery.
+Changing back does not revive old grants or old-generation pending events. There
+are five authentication attempts per chat per minute. Secret messages are
+best-effort deleted on success or failure; group permissions may prevent this.
+See
+[Telegram deletion permissions](https://core.telegram.org/bots/api#deletemessage)
+and [addressed commands](https://grammy.dev/guide/commands). Privacy mode need
+not be disabled for explicitly addressed commands.
 
-Run the monitor outside the home's power/network failure domain if alerts must
-continue during outages. Report observation timestamps and uncertainty; exact
-physical transition times cannot be inferred between polls or while the monitor
-was stopped.
+Both outage and restoration detections snapshot authorized subscribers into the
+same home commit. Subscribing does not replay old events. Disable/re-enable
+creates a new subscription identity, invalidating older pending deliveries.
+Before transport submission, access and subscription identity are rechecked. An
+already submitted request cannot be recalled.
 
-## Local JSON storage
+Delivery is at least once while pending: a crash after send and before saved ack
+can duplicate an event with the same event ID. Temporary failures retry on later
+notification passes even when provider polling is disabled or unknown. Existing
+Telegram transport retries are bounded to three retries and a 30-second maximum
+retry delay. Earlier failed events block later events for that home/chat only;
+at most four pairs send concurrently. Definite blocked/kicked/deactivated-chat
+responses disable that chat's subscriptions; other errors retain pending work.
+Each home caps pending deliveries at 1000; new excess deliveries are dropped and
+counted in `droppedAlerts`, while state and statistics continue to commit.
 
-Use `volume/homes/<stable-id>.json` for each home's latest state and transition
-history, with UTC timestamps. Retain the directory across restarts and
-deployment.
+## Ownership and shutdown
 
-The storage implementation should serialize writes, replace files atomically,
-and flush accepted changes during shutdown. Define backup/recovery behavior for
-corrupted JSON and failed writes. Run a single writer against each directory.
-Restart persistence does not eliminate disk-failure or abrupt-power-loss risk.
+One process exclusively creates `volume/.monitor.lock`. A second worker/manual
+launcher refuses to start; stale locks are never stolen. To recover, first
+verify the recorded process is gone and cannot write, then manually remove only
+the stale lock. Do not delete home/chat records. Network/shared filesystems with
+weak exclusive-create or atomic-rename guarantees are not supported.
 
-## Telegram behavior
+On Windows, both PM2 manifests use `shutdown_with_message: true`. The worker
+handles the exact IPC `shutdown` message through the same graceful drain as
+SIGINT/SIGTERM. Apply the updated manifest to the running PM2 app before relying
+on this setting; editing the JSON alone does not update PM2's saved
+configuration. The 40-second PM2 kill timeout exceeds the worker's 35-second
+hard deadline.
 
-Users add the bot to an allowed group and mention it with a home name. The bot
-should return current state, last successful observation, last off/on
-transition, and stale/unknown information. Ignore unrelated group messages.
+For approved recovery of an existing stale lock:
 
-Define the exact mention/command grammar and document Telegram privacy-mode
-requirements when this is implemented. Plain name lookup does not need an AI
-provider.
+1. Stop the affected PM2 app with watch disabled
+   (`pm2 stop home-power-status-monitor --watch`). Stop any standalone launcher
+   too.
+2. Read `volume/.monitor.lock`; verify its recorded PID is gone and no other
+   worker can write to this storage directory. Do not delete a live owner's
+   lock.
+3. Remove only that confirmed stale `volume/.monitor.lock`; preserve every home
+   and chat JSON record.
+4. Start the app using the updated manifest and verify a watch restart drains,
+   releases ownership, and reacquires it without repeated startup errors.
 
-Before allowing queries or notifications, define explicit chat-to-home access
-and destinations. Adding the bot to a group must not automatically expose every
-configured home. Decide whether mappings are static env settings or persisted
-registrations.
+Recovery and live restarts require operator approval. Automatic lock stealing is
+deliberately not enabled. A forced termination can still leave a stale lock.
 
-Send confirmed transitions once, with a defined retry and deduplication policy
-across restarts. Choose display timezone behavior separately from UTC
-persistence.
+The worker stops producers, drains accepted bot/cron/notification work and ack
+writes, drains Telegram, closes storage, then closes HTTP agents and logs. Drain
+timeout is 30 seconds with a 35-second hard deadline. A timed-out writer keeps
+its ownership lock for manual recovery; it is never released while work can
+still write. Disk failures and abrupt kills cannot guarantee every update.
 
-## Next development decisions
+The standalone manual launcher acquires the same lock, checks once and closes.
+It never sends Telegram notifications, but may persist events for the worker.
+Separate manual runs reset inference streaks, so three separate offline checks
+do not satisfy a three-sample streak. Monitoring defaults remain disabled.
 
-1. First provider, account region, supported API, auth and device identifiers.
-2. Multi-device evidence rules, polling cadence, confirmation and stale
-   timeouts.
-3. Chat authorization, notification destinations, and group-query grammar.
-4. JSON schema, corruption recovery, history retention and notification delivery
-   state.
-5. Deployment host, persistent directory, timezone display and live acceptance
-   checks using real devices.
-
-Local tests can verify logic and mocked transports. Actual provider
-connectivity, Telegram group behavior and outage inference require separate live
-acceptance.
+Local tests use temporary stores and fake transports. Live EZVIZ connectivity,
+physical outage inference, Telegram group privacy/deletion and production
+filesystem behavior require separate acceptance. No deployment is configured.

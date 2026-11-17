@@ -1,5 +1,3 @@
-import cron from 'node-cron'
-
 import config from '../../config'
 
 import { cron as cronService } from '../../services/cron'
@@ -13,22 +11,37 @@ import fn from './fn'
 const TASK_NAME = 'checkPowerStatus'
 const log = new Logger({ cron: TASK_NAME })
 
-const cronScript = () => {
-  const template = config.cron.checkPowerStatus.startTemplate
+export const createPowerStatusTask = ({ intervalSeconds, operation, log }) => {
+  let stopped = false
+  let pending = null
+  const execute = () => {
+    if (stopped) {
+      return Promise.reject(new Error('Power status task stopped'))
+    }
 
-  if (!cron.validate(template)) {
-    throw new Error('Invalid checkPowerStatus cron expression')
+    pending ??= cronService.run(log, TASK_NAME, operation).finally(() => {
+      pending = null
+    })
+
+    return pending
+  }
+  const timer = setInterval(() => {
+    if (!pending && !stopped) {
+      void execute().catch(() => {})
+    }
+  }, intervalSeconds * 1000)
+  const stop = async () => {
+    stopped = true
+    clearInterval(timer)
+    await pending
   }
 
-  return cron.schedule(
-    template,
-    () => cronService.run(log, TASK_NAME, fn(log)),
-    {
-      name: TASK_NAME,
-      timezone: 'UTC',
-      noOverlap: true,
-    },
-  )
+  return { name: TASK_NAME, execute, stop, destroy: stop }
 }
 
-export default cronScript
+export default homeMonitor =>
+  createPowerStatusTask({
+    intervalSeconds: config.monitor.intervalSeconds,
+    operation: fn(log, homeMonitor),
+    log,
+  })

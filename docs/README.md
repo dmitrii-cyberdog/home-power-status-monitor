@@ -2,7 +2,7 @@
 
 - [Development guide](development.md): architecture, local configuration and
   checks.
-- [Monitor design](monitor-design.md): planned behavior and implementation
+- [Monitor design](monitor-design.md): implemented behavior and operational
   decisions.
 - [EZVIZ research](ezviz-research.md): international API access, multiple-device
   configuration proposal and power inference rules.

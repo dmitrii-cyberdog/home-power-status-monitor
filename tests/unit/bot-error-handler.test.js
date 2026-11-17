@@ -71,8 +71,7 @@ for (const { error, description } of errorCases) {
     await catchHandler({ ctx, error })
 
     assert.equal(logged.message, `Bot Error - ${description}`)
-    assert.equal(logged.extra[0], error)
-    assert.deepEqual(logged.extra[1], {
+    assert.deepEqual(logged.extra[0], {
       updateId: undefined,
       messageId: 42,
       chatId: 7,

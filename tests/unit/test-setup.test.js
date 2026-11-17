@@ -31,15 +31,23 @@ test('unit-test preload isolates configuration and cleanup from private env file
         assert.equal(config.appSettings, undefined)
         assert.equal(config.cron.checkPowerStatus.isEnabled, false)
         assert.equal(config.logs.telegram.isEnabled, false)
+        assert.deepEqual(config.monitor.homes, [])
+        assert.equal(config.botSettings.accessSecret, '')
       `,
     ],
     {
       cwd: sourceDirectory,
       env: {
         ...process.env,
-        NODE_ENV: 'production',
+        NODE_ENV: 'prod',
         TG_BOT_TOKEN: 'must-not-be-used',
         CRON_CHECK_POWER_STATUS_IS_ENABLED: '1',
+        TG_BOT_ACCESS_SECRET: 'must-not-be-used',
+        HOME_1_NAME: 'Poisoned home',
+        HOME_1_EZVIZ_API_APP_KEY: 'must-not-be-used',
+        DEVICE_1_HOME_1_TYPE: 'ezviz',
+        DEVICE_1_HOME_1_NAME: 'must-not-be-used',
+        POWER_CHECK_INTERVAL_SECONDS: 'invalid',
       },
       encoding: 'utf8',
       timeout: 10000,

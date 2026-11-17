@@ -1,28 +1,32 @@
-# EZVIZ Monitor Implementation Plan
+# Persistent EZVIZ Home Monitor Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Poll explicitly configured EZVIZ devices using per-home credentials by
-exact configured name, optionally cross-check serials, and infer each home's
-electricity state from consecutive offline observations.
+**Goal:** Monitor configured EZVIZ devices, persist home state and statistics,
+and serve secret-authorized Telegram chats with status commands and subscribed
+power-off/power-restored alerts.
 
 **Architecture:** Configuration discovers homes and their selected devices. One
 EZVIZ client per home fetches the paginated account list once per round and owns
 credentials and token state; a separate monitor owns offline streaks and
-inferred state. An interval task replaces the cron placeholder while preserving
-the existing task lifecycle and drain integration.
+inferred state. A single-owner JSON store commits home state and pending alerts
+atomically per home. Chat authorization and subscriptions live in a separate
+registry; commands read committed snapshots and a separate dispatcher sends
+durable alerts. Runtime initialization and shutdown own all these resources.
 
 **Tech Stack:** Node.js 24, native ESM, existing form-encoded request service,
 Node timers, `node:test`, Yarn 4.18.0. No new dependencies.
 
-**Spec:** [EZVIZ research and agreed configuration](../../ezviz-research.md).
-The conversation confirms per-home credentials and one selected camera in the
-current private setup. The user clarified that NAME is the primary selector and
-SERIAL is an optional additional check. Other account cameras may be returned by
-the list endpoint but must not contribute observations or power inference.
+**Spec:**
+[Approved persistent monitor design](../specs/2026-11-17-persistent-home-monitor-design.md)
+(approved 2026-11-17), plus
+[EZVIZ research and agreed configuration](../../ezviz-research.md). Credentials
+are scoped per home. NAME is the primary selector and SERIAL is an optional
+additional check. Other account cameras may be returned by the list endpoint but
+must not contribute observations or power inference.
 
 ## Global Constraints
 
@@ -44,22 +48,57 @@ the list endpoint but must not contribute observations or power inference.
   `DEVICE_<deviceId>_HOME_<homeId>_TYPE/NAME/SERIAL`.
 - Global EZVIZ credentials are obsolete and must not be used as fallbacks.
 - Keep UTC observation times, unknown observations and last inferred state
-  separate. State is in memory and starts unknown after restart.
-- Do not implement JSON history, notifications, group queries or Xiaomi access.
+  separate. Persist historical state; current status starts unknown and offline
+  streaks reset after restart. Never invalidate chat authorization on an
+  ordinary restart with the same secret.
+- Store versioned JSON in `volume/homes/<id>.json` and `volume/chats.json`.
+  Exactly one process owns the directory. Never use names in paths.
+- `TG_BOT_ACCESS_SECRET` gates each protected command and outbound alert. Secret
+  rotation invalidates grants; preserve subscription preferences.
+- Support `/secret`, `/status`, `/on_notification`, `/off_notification` in
+  direct chats and explicitly bot-addressed commands in private groups.
+- Send both confirmed outage and restoration events. Initial off baseline
+  alerts; initial on baseline does not. Statistics are cumulative, not calendar
+  reports. Unknown/restart gaps never count as measured on/off time.
+- No Xiaomi, database, dashboard, free-form mentions, per-user roles or new
+  configurable policy knobs. Preserve English/Russian key parity.
 - Do not contact Telegram or vendor accounts during automated verification.
 - Do not commit, push, deploy, create PRs, change branches or modify remotes.
-  Confirm execution location at the plan handoff; preserve the current checkout
-  unless the user chooses isolation.
+  Preserve the current checkout unless the user chooses isolation.
 
 ## Review Focus
 
-1. Per-home tokens must not leak across homes or appear in errors/logs.
-2. An API error or malformed success response must never count as offline.
-3. Missing device configuration must not cause account-wide monitoring.
-4. Manual and scheduled executions must not overlap or count the same round
-   twice; stopping must prevent new work while draining accepted requests.
-5. Unknown devices must not produce false recovery, especially with thresholds
-   greater than one or `-1`.
+1. Restart, secret rotation and rotation back: preserve grants only for the
+   current generation and suppress older pending alerts (Tasks 6, 8).
+2. Crash or write failure: never expose uncommitted state; acknowledge the
+   send-before-save duplicate window and reject competing writers (Tasks 4, 8).
+3. Uncertain provider data, delayed polls and clock changes: no invented outage,
+   recovery or uninterrupted duration (Tasks 2, 3, 5).
+4. Subscribe/unsubscribe races and group addressing: no unintended home access
+   or stale-subscription delivery (Tasks 6, 7, 8).
+5. Startup/shutdown races: no polling before storage/auth initialization and no
+   lock release while accepted operations can still write (Task 9).
+
+## File and dependency map
+
+Tasks 1-3 establish configuration, transport and pure in-memory inference. Task
+4 owns disk I/O and schema validation; Task 5 owns the pure history reducer.
+Task 6 owns authorization and chat subscriptions; Task 7 exposes commands and
+localized rendering; Task 8 commits observations and dispatches pending alerts.
+Task 9 connects lifecycle, scheduling and documentation. Execute in order.
+
+New modules are `src/config/monitor.js`, `src/services/ezviz.js`,
+`src/services/powerMonitor.js`, `src/services/monitorStore.js`,
+`src/services/monitorRecords.js`, `src/services/powerHistory.js`,
+`src/services/chatAccess.js`, `src/services/homeMonitor.js`,
+`src/services/powerNotifications.js`, `src/services/monitorRuntime.js`,
+`src/api/bot/monitorCommands.js`, `src/api/bot/monitorMessages.js` and
+`src/middlewares/bot/accessHandler.js`. Existing lifecycle files are modified
+only in Task 9; existing command composition and locale files in Task 7.
+
+All test commands below run from `src`, unless marked root. Before every
+implementation step, run its focused tests and observe a meaningful failure;
+rerun after implementation for zero failures. Keep changes uncommitted.
 
 ## Task 1: Home and device configuration
 
@@ -78,7 +117,8 @@ within the safe integer range. Discover homes from recognized `HOME_<id>_*` keys
 and device references, and devices from any recognized device field, so missing
 `NAME` or `TYPE` cannot silently hide an entry. Export as `config.monitor`;
 retain the existing cron enable flag at
-`config.cron.checkPowerStatus.isEnabled`.
+`config.cron.checkPowerStatus.isEnabled`. Add `config.botSettings.accessSecret`
+from `TG_BOT_ACCESS_SECRET`, default `''`, preserving its exact value.
 
 - [ ] Write failing tests for two EZVIZ devices in one home, a second home with
       different credentials, sparse IDs, exact name selection, optional serials,
@@ -94,6 +134,10 @@ retain the existing cron enable flag at
       distinct nonempty serials for every same-name entry to avoid counting one
       physical device twice. Required strings cannot be empty/whitespace. Error
       messages name keys, never values.
+- [ ] Test trimmed, case-insensitive duplicate home display names are rejected;
+      device selectors remain exact/case-sensitive. Test missing/empty access
+      secret disables protected access and dotenv precedence preserves exact
+      secret text. Add `TG_BOT_ACCESS_SECRET` to test environment isolation.
 - [ ] Reject obsolete home/provider fields and global EZVIZ keys with messages
       naming their replacements. Accept but ignore the retired cron template,
       including an invalid old expression; assert interval settings govern.
@@ -194,8 +238,7 @@ uses `Date.now`.
 ## Task 3: Home power inference and polling round
 
 **Files:** Create `src/services/powerMonitor.js` and
-`tests/unit/power-monitor.test.js`. Replace `src/cron/checkPowerStatus/fn.js`'s
-placeholder.
+`tests/unit/power-monitor.test.js`. Task 9 replaces the cron placeholder.
 
 **Interfaces:** `createPowerMonitor(settings, { createClient, now } = {})`
 returns `{ check() }`. `settings` is `config.monitor`; the default client
@@ -207,12 +250,11 @@ is `unknown` and `lastInferredAt` is null; update both on each decisive round.
 This timestamp is the most recent supporting check, not an electrical
 transition. `observedAt` records completion of the home round. Each device
 result contains its configured ID/name, observation status/time and offline
-streak. Provider settings and tokens never enter results. The default export
-from `fn.js` remains `log => async () => result`, delegating to one process-wide
-monitor instance and logging home observations safely. `check()` coalesces
-concurrent calls within this process into one polling round and applies each
-observation once, including callers bypassing the scheduler. Old returned
-snapshots must not mutate on later rounds.
+streak. Provider settings and tokens never enter results. This is the evidence
+engine only; durable history and command snapshots belong to Tasks 5 and 8.
+`check()` coalesces concurrent calls within this process into one polling round
+and applies each observation once, including callers bypassing the scheduler.
+Old returned snapshots must not mutate on later rounds.
 
 - [ ] Write failing tests for startup unknown, no-device homes remaining
       unknown, per-device consecutive offline counts and reset on online or
@@ -240,85 +282,442 @@ snapshots must not mutate on later rounds.
       Keep state in memory.
 - [ ] Rerun focused tests; expect zero failures.
 
-## Task 4: Interval lifecycle, integration and documentation
+## Task 4: Single-owner JSON storage and records
 
-**Files:** Modify `src/cron/checkPowerStatus/cron.js`,
+**Files:** Create `src/services/monitorStore.js`,
+`src/services/monitorRecords.js`, `tests/unit/monitor-store.test.js` and
+`tests/fixtures/monitor-store.mjs`.
+
+**Interfaces:** `openMonitorStore({ directory, homeIds, fs })` asynchronously
+returns
+`{ readHome(id), readChats(), updateHome(id, update), updateChats(update), drain(), close() }`.
+Default `fs` is Node's promise filesystem API; inject it for write-failure
+tests. Reads return detached committed snapshots. Updates are serialized in one
+process-wide queue: `updateHome` receives cloned `(home, chats)` and returns the
+next home; `updateChats` receives a cloned registry and returns its replacement.
+Updaters are synchronous and perform no network I/O. Resolve updates only after
+persistence, then publish the replacement in memory. `close()` rejects new
+mutations, drains accepted ones, and releases ownership.
+
+`monitorRecords.js` exports `createHomeRecord(id)`, `createChatRegistry()`,
+`validateHomeRecord(value, id)` and `validateChatRegistry(value)`. Version 1:
+
+- Home: `version`, `id`, `sample` (null or `{ status, observedAt, runId }`),
+  `lastDecisiveStatus`, `lastDecisiveAt`, `lastOn`, `lastOff` (each null or
+  `{ detectedAt, baseline }`), `stateSince`, `continuous`, `trackingSince`,
+  `accountedAt`, `stats: { onMs, offMs, uncertainMs, outageCount }`,
+  `eventSequence`, `pendingDeliveries`, `droppedAlerts`. Initial status is
+  `unknown`; dates are null until evidence exists and counters start at zero.
+- Registry: `version`, `verifier` (null or `{ salt, digest }`), `generation`,
+  `chats` keyed by canonical decimal chat-ID strings (including negative IDs).
+  Each chat contains `authorizedGeneration`, `locale`, and `subscriptions` keyed
+  by numeric home ID with `{ id }` as an opaque subscription identity.
+- Delivery:
+  `{ eventId, sequence, state, detectedAt, baseline, uncertain, chatId, generation, subscriptionId, locale }`.
+  Event IDs combine the home ID and its monotonically increasing sequence. A
+  pending entry is unique by event ID and chat ID. No device/provider
+  credentials enter these records.
+
+- [ ] Write store tests for round trips, missing files, detached reads and
+      serialized mutations. Assert `readHome(id)` stays unchanged while rename
+      is blocked; after simulated rename failure it is still unchanged and the
+      update rejects. An invalid JSON/schema/version/ID fails opening without
+      replacing the offending file. Validate dates, statuses, nonnegative finite
+      counters and canonical identifiers at this disk boundary.
+
+      ```js
+      // After injecting a rename failure into an attempted home update:
+      await assert.rejects(write)
+      assert.deepEqual(store.readHome('1'), before)
+      ```
+
+- [ ] Test concurrent processes opening one directory: exactly one succeeds; the
+      other gets an ownership error. Test orderly close/reopen, rejection of
+      mutations after close, draining queued writes, startup failure cleanup,
+      and stale ownership refusal. Unconfigured home files are neither loaded
+      into active queries nor deleted; registry references to removed homes are
+      retained but ineligible for delivery.
+- [ ] Run
+      `node --import=extensionless/register --import=../tests/unit/setup.js --test ../tests/unit/monitor-store.test.js`;
+      expect missing-store failures before implementation.
+- [ ] Implement exclusive `volume/.monitor.lock` creation with an ownership
+      token and process metadata, and same-directory temporary-file/rename
+      writes. Only remove a lock owned by this instance. Do not auto-steal stale
+      locks or overwrite corrupt records. Persist only validated canonical data.
+      Close the lock handle before removing it on Windows. Clean up only this
+      operation's temporary file after failure; do not sweep unfamiliar files.
+- [ ] Rerun the focused command; expect zero failures, including controlled
+      child-process ownership checks. Tests use temporary directories
+      exclusively.
+
+## Task 5: Persistent state, duration and statistics reducer
+
+**Files:** Create `src/services/powerHistory.js` and
+`tests/unit/power-history.test.js`.
+
+**Interfaces:**
+`reduceHomeObservation(record, observation, { runId, intervalSeconds, recipients })`
+returns a new `HomeRecord` without mutating inputs. `observation` is a home
+result from Task 3; `recipients` is an array of
+`{ chatId, generation, subscriptionId, locale }`. Only history fields from Task
+4 are durable; ignore the inference engine's historical fields in favor of the
+previous stored record. Export
+`projectHomeStatus(record, { home, runId, now, intervalSeconds })` returns
+`{ id, name, status, stale, observedAt, lastInferredStatus, lastInferredAt, lastOn, lastOff, stateSince, durationMs, uncertain, stats, unobservedTailMs }`.
+Use the record's last decisive state/time for `lastInferredStatus/At`.
+`lastOn/Off` retain their baseline flags. `durationMs` is null when continuity
+is uncertain; `unobservedTailMs` is nonnegative time after `accountedAt`, shown
+separately from stored counters. Exclude delivery/authentication metadata.
+
+- [ ] Write deterministic tests: at 60-second cadence, samples `on@0`, `on@60`,
+      `off@120`, `off@180`, `unknown@240`, `on@300` produce `onMs=60000`,
+      `offMs=60000`, `uncertainMs=180000`, `outageCount=1`. Use actual ISO
+      fixture times in one run; expect off/on detection timestamps at 120/300
+      seconds, no initial-on alert, and one event for each later transition.
+
+      ```js
+      assert.deepEqual(record.stats, {
+        onMs: 60000,
+        offMs: 60000,
+        uncertainMs: 180000,
+        outageCount: 1,
+      })
+      assert.equal(record.eventSequence, 2)
+      ```
+
+- [ ] Test an initial confirmed off baseline alerts and increments outages once;
+      repeated off samples do neither. Unknown preserves historical state/time.
+      Same-state restart adds the gap to uncertainty and creates no event;
+      opposite-state restart records detection now, with an uncertain event.
+      Equality at the two-interval boundary counts; larger gaps do not.
+- [ ] Test clock rollback never decreases counters: retain an accounting time
+      high-water mark in `accountedAt` so later recovery does not count the same
+      elapsed interval twice. Backward samples break continuity. Test immutable
+      earlier DTOs, stale and disabled-polling views, and old-run status always
+      unknown until this process commits a sample.
+- [ ] Run
+      `node --import=extensionless/register --import=../tests/unit/setup.js --test ../tests/unit/power-history.test.js`;
+      expect missing-reducer failures.
+- [ ] Implement the reducer and projection. Allocate elapsed intervals exactly
+      once: same-run/equal-decisive-state samples within `2 * intervalSeconds`
+      count toward that state; everything else is uncertain. Keep continuity
+      false after a gap until a new detected state episode starts. A baseline's
+      actual start is unknown. Increment event sequence only for alertable
+      episodes and snapshot recipients into the same replacement home record.
+      Use 1000 pending deliveries per home as a fixed cap; preserve existing
+      pending entries, count/log newly dropped entries, and still commit state.
+- [ ] Test cap saturation preserves statistics and existing queue order;
+      clearing deliveries allows future events. Rerun focused tests; expect zero
+      failures.
+
+## Task 6: Durable secret authorization and subscriptions
+
+**Files:** Create `src/services/chatAccess.js` and
+`tests/unit/chat-access.test.js`. Extend `tests/unit/logger.test.js` for the new
+secret key; retain the logger's existing metadata-only update behavior.
+
+**Interfaces:** `createChatAccess({ store, secret, homes, now })` returns
+`{ initialize(), authorize(chatId, suppliedSecret, locale), isAuthorized(chatId), setSubscription(chatId, homeId, enabled, locale), recipients(homeId, registry), isDeliveryAllowed(delivery), disableSubscriptions(chatId) }`.
+`initialize`, `authorize`, `setSubscription` and `disableSubscriptions` are
+async; other methods inspect committed snapshots. `authorize` returns
+`authorized`, `invalid`, `disabled` or `rate_limited`. `setSubscription` returns
+`enabled`, `already_enabled`, `disabled` or `already_disabled`, rejecting
+unauthorized use. `recipients` filters the supplied registry snapshot inside
+`updateHome` so an observation's committed recipient list is ordered against
+subscription writes. `isDeliveryAllowed` also requires a currently configured
+home.
+
+- [ ] Test authorization, independent direct/group chat IDs, persistence across
+      close/reopen with the same secret, and generation changes for A → B → A.
+      Assert prior grants never revive on rotation back. Empty/missing secret
+      disables access; repeated starts while disabled do not grant access. Auth
+      initialization failure prevents all protected reads and delivery.
+
+      ```js
+      // Reopen the authorized registry with the unchanged secret, then rotate.
+      assert.equal(reopenedAccess.isAuthorized('-1007'), true)
+      assert.equal(rotatedAccess.isAuthorized('-1007'), false)
+      assert.equal(rotatedBackAccess.isAuthorized('-1007'), false)
+      ```
+
+- [ ] Test exact secret matching, invalid attempts preserving a valid grant, and
+      no plaintext secret in registry, replies or captured logs/errors. Test
+      slow-verifier corruption through Task 4's validation. The verifier's
+      format and work factors are fixed by schema version, not disk-supplied
+      algorithm parameters. Use Node crypto's async scrypt and timing-safe
+      comparison; no custom cryptography or new dependency.
+- [ ] Test a maximum of five authentication attempts per chat per 60 seconds,
+      including concurrent attempts. Resetting only the in-memory attempt
+      limiter on restart must preserve valid grants. Expire inactive limiter
+      entries; never retain a per-chat entry indefinitely solely for rate
+      limiting.
+- [ ] Test subscription persistence/idempotence, independent homes/chats, same
+      identity on duplicate enable, new identity after disable/re-enable, secret
+      rotation preserving preferences but suspending delivery, and
+      old-generation pending alerts remaining invalid even after
+      reauthentication.
+- [ ] Run
+      `node --import=extensionless/register --import=../tests/unit/setup.js --test ../tests/unit/chat-access.test.js ../tests/unit/logger.test.js`;
+      expect missing-access-service failures.
+- [ ] Implement initialization before any consumer starts. Preserve salt/digest
+      and generation for an unchanged secret; otherwise atomically replace the
+      verifier, generate a fresh generation and clear grants while retaining
+      subscriptions. Validate scrypt parameters against current Node docs when
+      choosing constants. Compare supplied values without echoing them; use
+      bounded errors without credential-bearing raw messages.
+- [ ] Rerun focused tests; expect zero failures with no Telegram calls.
+
+## Task 7: Authorized commands and localized status rendering
+
+**Files:** Create `src/middlewares/bot/accessHandler.js`,
+`src/api/bot/monitorCommands.js`, `src/api/bot/monitorMessages.js`,
+`tests/unit/monitor-commands.test.js`, `tests/unit/monitor-messages.test.js`.
+Modify `src/api/bot/index.js`, `src/api/bot/mainCommands.js`,
+`src/middlewares/bot/index.js`, `src/middlewares/bot/errorHandler.js` only where
+needed for secret-safe failures, `system/locales/bot/en.ftl`,
+`system/locales/bot/ru.ftl`, and `tests/unit/bot-routing.test.js`.
+
+**Interfaces:** `createBotRoutes({ access, homeMonitor })` replaces the static
+route export; callers inject services. `createAccessHandler({ access })` gates
+protected commands. `createMonitorCommands({ access, homeMonitor })` returns a
+Composer. `homeMonitor.getStatuses()` returns Task 5 DTOs in numeric ID order;
+Task 7 tests stub this interface until Task 8 implements it.
+`renderStatusMessages(statuses, t)` and `renderPowerAlert(delivery, home, t)`
+return plain-text message arrays. No provider call occurs in a command.
+
+- [ ] Consult Context7 for current grammY command addressing, argument
+      extraction, i18n translation outside a handler and Telegram API error
+      shapes before coding those boundaries. Resolve the library ID first.
+      Verify group command privacy/deletion requirements against official
+      documentation if not covered.
+- [ ] Extend the existing `Bot.handleUpdate` fixture with stubbed bot info and
+      API transformer. Test direct `/secret`, protected denial without leaking
+      home names, authenticated `/status` and `/status Family Home`, and group
+      `/status@power_test_bot Family Home`. Ignore bare group commands,
+      free-form mentions, unrelated messages and commands for another bot.
+      Generic start/help remain public. Changing the group chat ID requires a
+      new grant.
+
+      ```js
+      // Fixture replies from an unauthorized /status; home name is a sentinel.
+      assert.equal(replies.length, 1)
+      assert.doesNotMatch(replies[0].payload.text, /Family Home/)
+      assert.equal(providerCalls, 0)
+      ```
+
+- [ ] Test different group members share chat authorization and subscription
+      scope. Test all-home numeric order, trimmed case-insensitive lookup,
+      unknown/missing home arguments, notification command idempotence and no
+      success acknowledgement on failed persistence. Preserve secret arguments
+      exactly after the command separator; do not apply home-name normalization
+      to them. Verify access for every protected command, not just `/status`.
+- [ ] Test initial/unknown/stale/baseline/gapped DTO rendering, UTC labels,
+      duration estimates, on/off/uncertain totals and outage count in both
+      languages. Assert locale keys/variables match. Split plain text to at most
+      4000 UTF-16 code units without breaking a surrogate pair; handle a single
+      unusually long home name as well as long all-home replies.
+- [ ] Test best-effort deletion of `/secret` messages on success and failure;
+      failure to delete neither changes the auth result nor logs raw errors or
+      message content. Capture handler/error logs with sentinel secrets and
+      verify absence. Public help must not claim that implemented features are
+      still future work once the final integration ships.
+- [ ] Run
+      `node --import=extensionless/register --import=../tests/unit/setup.js --test ../tests/unit/monitor-commands.test.js ../tests/unit/monitor-messages.test.js ../tests/unit/bot-routing.test.js ../tests/unit/bot-error-handler.test.js`;
+      expect absent-command failures.
+- [ ] Implement the factory composition, public secret handler, protected routes
+      and pure message renderers. Use the existing i18n middleware; persist the
+      supported locale on authorization/subscription changes for later alerts.
+      Update all callers of the old static routes export, including tests.
+- [ ] Rerun focused tests; expect zero failures and no external requests.
+
+## Task 8: Committed monitoring rounds and durable alert delivery
+
+**Files:** Create `src/services/homeMonitor.js`,
+`src/services/powerNotifications.js`, `tests/unit/home-monitor.test.js` and
+`tests/unit/power-notifications.test.js`.
+
+**Interfaces:**
+`createHomeMonitor({ monitor, store, access, homes, runId, intervalSeconds, now, log })`
+returns `{ check(), getStatuses() }`. `check()` coalesces the entire
+observation-and-commit operation, calls Task 3's monitor, and uses Task 4's
+`updateHome` with Task 5's reducer and Task 6's recipient selection. It returns
+committed public statuses only. Commit each home independently; one disk failure
+does not prevent healthy homes committing, but reject/report the failed round
+after other commits settle. All command reads use the same instance and
+projections.
+
+`createPowerNotifications({ store, access, homes, send, translate, log })`
+returns `{ flush(), stop(), drain() }`. `send(chatId, text)` uses the existing
+configured Telegram API; `translate(locale)` supplies the renderer's `t`.
+`flush()` coalesces concurrent passes, making at most one transport submission
+per eligible delivery per pass; the existing transport owns bounded retries.
+`stop()` prevents new passes/submissions; `drain()` waits for accepted work and
+its acknowledgement writes.
+
+- [ ] Test concurrent scheduled/manual checks commit one observation once;
+      failed writes leave query snapshots and pending events unchanged. Pending
+      alerts never become visible before a home commit. A subsequent successful
+      observation can recover without duplicating earlier committed events.
+      Rename homes without losing history/subscriptions; omit removed homes.
+- [ ] Test both event types, initial-off baseline, no initial-on alert, no
+      replay on subscribe, and two subscribed chats with independent delivery
+      outcomes. Unknown provider rounds do not prevent retries of already
+      pending alerts. A disabled Telegram transport leaves pending records
+      untouched.
+- [ ] Test event order per home/chat across restart: a failed earlier event
+      blocks later events for that pair only. Flush other recipients
+      concurrently with a fixed maximum of four active pairs, sharing the
+      existing API queue. A hung send for one pair must not block polling or
+      already running pairs.
+- [ ] Test revocation before sending, old-generation rejection, removed-home
+      rejection and disable/re-enable identity races. Successful delivery
+      removes only that event/chat entry; concurrent observation commits cannot
+      lose newer events. Invalid recipients are removed durably without sending.
+
+      ```js
+      // With one pending event whose subscription has been disabled:
+      await notifications.flush()
+      assert.equal(sent.length, 0)
+      assert.equal(store.readHome('1').pendingDeliveries.length, 0)
+      ```
+
+- [ ] Test temporary failure stays pending; definite blocked/removed-chat errors
+      disable all that chat's subscriptions and discard its pending deliveries
+      on subsequent validation. Classify documented API errors conservatively:
+      unrelated permanent-looking response errors must not revoke access or
+      subscriptions. Do not log raw transport messages containing sensitive
+      data.
+- [ ] Test crash simulation after send-before-ack: reopen the store and observe
+      possible repeat delivery with the same event ID. Ack write failure stops
+      further events for that pair in this pass. Test cap/drop counter behavior
+      under sustained failures, stop/drain, and no unhandled rejections.
+- [ ] Run
+      `node --import=extensionless/register --import=../tests/unit/setup.js --test ../tests/unit/home-monitor.test.js ../tests/unit/power-notifications.test.js`;
+      expect missing-service failures.
+- [ ] Implement the coordinator and independent dispatcher. Never hold the store
+      mutation queue across a network call. Recheck authorization/subscription
+      immediately before each submission; an already submitted request cannot be
+      recalled. An event whose send is confirmed but whose ack is unsaved is
+      still pending: document the at-least-once, bounded-queue guarantee
+      honestly.
+- [ ] Rerun focused tests; expect zero failures, using only fake transports.
+
+## Task 9: Runtime ownership, interval lifecycle and final verification
+
+**Files:** Create `src/services/monitorRuntime.js` and
+`tests/unit/monitor-runtime.test.js`. Modify `src/app.js`,
+`src/loaders/index.js`, `src/loaders/bot.js`, `src/loaders/cron.js`,
+`src/cron/checkPowerStatus/fn.js`, `src/cron/checkPowerStatus/cron.js`,
 `src/cron/checkPowerStatus/manualStart.js`, `tests/unit/cron.test.js`,
-`tests/unit/startup.test.js`, `src/.env.example`, `README.md`, `AGENTS.md`,
+`tests/unit/startup.test.js`, `tests/unit/shutdown.test.js`,
+`tests/unit/bot-runner.test.js`, `tests/fixtures/worker.mjs`,
+`tests/fixtures/shutdown.mjs`, `src/.env.example`, `README.md`, `AGENTS.md`,
 `docs/development.md`, `docs/monitor-design.md` and `docs/ezviz-research.md`.
-Update subprocess fixtures only where required by the new configuration.
 
-**Interfaces:** Preserve task shape `{ name, execute, stop, destroy }` consumed
-by the existing loader and app. Export
-`createPowerStatusTask({ intervalSeconds, operation, log })` for tests; the
-default scheduler supplies configuration and `fn(log)`. Use fixed interval
-ticks; the first automatic round occurs after one interval. Scheduled ticks
-while busy are skipped, never queued or replayed. `execute()` coalesces manual
-calls into the active promise, with one result/log publication per real round.
-`stop()` clears the timer and rejects new executions; `destroy()` is idempotent
-and stops scheduling. Accepted rounds still use `cronService.run` so shutdown
-drains them before closing agents.
+**Interfaces:** `createMonitorRuntime({ config, directory, now, log, ...deps })`
+asynchronously opens/validates storage, creates a fresh run ID, initializes
+access and assembles the services. Dependency injection is for tests only;
+production directory comes from `config.generalSettings.externalStorageFolder`.
+Returns
+`{ access, homeMonitor, setTelegramApi(api), startNotifications(), stopNotifications(), drainNotifications(), close() }`.
+`setTelegramApi` wires one dispatcher to the API configured by
+`configureTelegramApi`; it does not start delivery. Notification passes start
+immediately and then every monitor interval, independently of polling
+enablement; busy passes coalesce. Without an API there is no delivery timer.
+`close()` is called only after producers have stopped and drained, then
+drains/releases storage.
 
-- [ ] Write failing lifecycle tests using controlled clocks/operations for the
-      interval, manual execution, non-overlap, errors releasing the active
-      guard, no unhandled rejection, stop/destroy preventing new work and cron
-      drain waiting for an active polling round. Replace placeholder assertions
-      with an empty home-result assertion when no devices are configured. Use
-      `t.mock.timers` or existing controlled subprocess patterns, not a real
-      minute-long wait. Test the manual `fn` wrapper and task wrapper share one
-      monitor state in a process, while separate launches reset state.
-- [ ] Run from `src`:
-      `node --import=extensionless/register --import=../tests/unit/setup.js --test ../tests/unit/cron.test.js ../tests/unit/startup.test.js ../tests/unit/shutdown.test.js`.
-      Observe failures for the old placeholder and scheduling behavior.
-- [ ] Replace expression scheduling with the interval task, preserving its
-      public name and loader enable flag. Catch scheduled failures after the
-      existing cron service logs them. Leave application shutdown structure
-      unchanged. Ensure the manual launcher closes request agents and flushes
-      logs even after an error. Preserve the existing 30-second drain and
-      35-second hard shutdown deadlines. Sequential device checks can exceed
-      that budget; document that accepted rounds drain only within those bounds
-      and test the timeout path. Do not promise unlimited graceful completion.
-- [ ] Update public examples and feature descriptions. Mark polling and
-      inference implemented only after checks pass; history, alerts and bot
-      status queries remain future work. Document startup validation, in-memory
-      state, uncertainty, recovery, cadence migration and live acceptance
-      limits. Document that a one-shot manual process starts with empty streaks:
-      repeated separate launches cannot reach a three-check confirmation. An
-      initial online observation may infer on immediately; initial offline
-      observations remain unknown until confirmed. Keep `lastInferredStatus`
-      clearly historical whenever the current result is unknown. Do not publish
-      private identifiers or credentials.
-- [ ] Preserve the already-configured private home name, device selection and
-      credentials; do not repeat their setup. Verify key presence without
-      printing values. Document the retired cron key as ignored, with removal
-      optional. Keep polling disabled by default and do not start the real
-      worker during automated checks.
-- [ ] Run focused tests and scoped ESLint/Prettier checks. Then run from root:
-      `node .yarn/releases/yarn-4.18.0.cjs test`,
+The loader stores this object as `runtime.monitorRuntime` before starting cron
+or Telegram. Pass it explicitly to `botLoader(signal, monitorRuntime)` and
+`cronLoader(monitorRuntime)`; keep the bot loader's runner return contract.
+Register all public commands, compose injected routes, and attach the bot API
+before starting notifications. Check shutdown signal around async initialization
+so a late startup continuation cannot start producers or leak storage ownership.
+
+`fn(log, homeMonitor)` returns `async () => result`, delegating to the shared
+coordinator. `createPowerStatusTask({ intervalSeconds, operation, log })`
+returns `{ name, execute, stop, destroy }`. The configured factory receives
+`monitorRuntime.homeMonitor`; no import-time singleton opens storage or starts
+work. The first automatic poll occurs after one interval. Busy ticks skip;
+manual execute coalesces; stopping rejects new work and drains accepted rounds
+through `cronService.run`.
+
+- [ ] Write controlled lifecycle tests for timer cadence, non-overlap, manual
+      coalescing, errors releasing guards and stop/destroy behavior. Test cron
+      drain waits for persistence as part of each accepted round; do not sleep
+      for real minute-long intervals.
+- [ ] Test initialization order: store lock/schema → secret initialization →
+      producers. Corrupt files, changed-secret save failure and competing manual
+      processes cannot start provider calls or protected bot routes. Cover an
+      abort during initialization and a failure after partial startup.
+
+      ```js
+      // A fake access initializer rejects before any producer can start.
+      await assert.rejects(startup)
+      assert.equal(providerCalls, 0)
+      assert.equal(telegramCalls, 0)
+      ```
+
+- [ ] Test shutdown order: stop intake/timers → drain bot/cron/notification work
+      and acknowledgement writes → drain Telegram queue → close store → close
+      agents/flush logs. Preserve the 30-second drain and 35-second hard limit.
+      Include hanging notification/write cases in the existing VM fixture. On
+      timeout, terminate with failure without releasing a lock while old work
+      can still write; leave the lock for documented stale-lock recovery.
+- [ ] Update subprocess fixtures to use temporary working directories laid out
+      with `src`, `system/locales` and `volume`, or inject a temporary store
+      into the controlled loader. Never write test records into the real
+      `volume`. Clear inherited provider/secret variables and disable real
+      transports.
+- [ ] Run
+      `node --import=extensionless/register --import=../tests/unit/setup.js --test ../tests/unit/monitor-runtime.test.js ../tests/unit/cron.test.js ../tests/unit/startup.test.js ../tests/unit/shutdown.test.js ../tests/unit/bot-runner.test.js`;
+      expect missing-runtime or old-lifecycle assertions to fail.
+- [ ] Implement explicit runtime ownership and replace expression scheduling.
+      The standalone manual launcher acquires the same exclusive store, runs one
+      check and closes resources; refuse if the worker owns the directory. Do
+      not attach Telegram or start notification timers in that launcher. It can
+      persist newly detected events for a later worker but cannot send. Separate
+      launches reset inference streaks, never authorization/history.
+- [ ] Update public docs/examples and the env template with empty access secret,
+      new home/device settings and disabled polling. Explain command addressing,
+      per-chat/group access, persistent grants, secret rotation, both alerts,
+      cumulative estimates, uncertainty, initial baselines, storage ownership,
+      stale-lock recovery after checking the prior process is gone, manual-run
+      limits, bounded retries/drop counts and the send/ack duplicate window.
+      Update old future-only descriptions once implementation checks pass.
+- [ ] Rerun focused lifecycle tests and all new service tests; expect zero
+      failures. Run scoped ESLint/Prettier checks for touched files.
+- [ ] Run from root: `node .yarn/releases/yarn-4.18.0.cjs test`,
       `node .yarn/releases/yarn-4.18.0.cjs lint`,
       `node .yarn/releases/yarn-4.18.0.cjs prettier`,
       `node .yarn/releases/yarn-4.18.0.cjs check`, and `git diff --check`.
-      Require zero failures; inspect working-tree changes for scope/privacy.
-- [ ] Review the resulting patch with fresh context, fix material defects and
-      rerun affected checks. Recommend a security diff scan for the credential
-      handling change; do not initiate a scan or live vendor calls implicitly.
+      Require zero failures and inspect the patch for private data/scope
+      changes.
+- [ ] Review the complete implementation with fresh context, address material
+      issues and rerun affected checks. Recommend a security diff scan for the
+      credential/access changes; do not launch a scan or live acceptance without
+      authorization. No commits, pushes, PRs or deployments are part of this
+      plan.
 
 ## Plan review and execution
 
-Review corrections: clarified empty homes, test-environment isolation, retired
-cron compatibility, actual request envelopes, app-key redaction, overlapping
-rounds, token refresh races, failed-account request suppression, state freshness
-and shutdown/manual-run limits. Runtime implementation has not begun.
+Design approved 2026-11-17. The plan retains the original provider/inference
+contract and adds durable state/statistics, persistent secret-based chat grants,
+status/subscription commands, both alert types and lifecycle ownership. All
+implementation tasks remain unchecked; this revision changes docs only.
 
-Selection is resolved: the user's latest answer makes NAME primary and SERIAL an
-optional cross-check. Account-list polling replaces the earlier recommended
-direct-serial approach. No additional product question remains for this scope.
+Self-review covers the approved design against Tasks 1–9, including unchanged-
+secret restarts, rotation back, unknown/statistical gaps, single-writer safety,
+per-chat authorization, subscription races, durable retry ordering and bounded
+shutdown. Task 7 reads status DTOs from Task 8's declared interface; its tests
+stub that interface until integration. No runtime opens storage at import time.
 
-Native execution is recommended: four closely connected tasks share the same
-configuration and provider interfaces. It avoids a new implementation context
-for each task. Subagent-driven execution remains an alternative for per-task
-independent review. Confirm the execution method and current-checkout versus
-isolated-worktree choice before product-code changes.
+Native execution in the current checkout is recommended because these nine
+ordered tasks share storage and lifecycle interfaces. Subagent-driven execution
+is available if per-task independent implementation/review is preferred. Review
+this plan and select the execution method before product-code changes; preserve
+the existing checkout unless isolation is requested.
 
-Baseline: Node.js 24.12.0, 59 tests passed, zero failures on 2026-11-16. No
-implementation code has been changed by this planning step.
+Historical baseline only: Node.js 24.12.0 and 59 passing tests were recorded on
+2026-11-16. Re-establish the current baseline at execution; those results are
+not verification of this expanded implementation.

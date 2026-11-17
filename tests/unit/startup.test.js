@@ -15,7 +15,6 @@ test(
         NODE_ENV: 'test',
         TG_BOT_TOKEN: '',
         CRON_CHECK_POWER_STATUS_IS_ENABLED: '1',
-        CRON_CHECK_POWER_STATUS_TEMPLATE: '* * * * *',
       },
       execArgv: ['--import=extensionless/register'],
       silent: true,

@@ -25,7 +25,7 @@ const handleMessage = async (text, entities = [], languageCode = 'en') => {
   })
   bot.use(updatesHandler)
   bot.use(new I18n(config.botSettings.i18nSettings))
-  bot.use(routes)
+  bot.use(routes({}))
 
   await bot.handleUpdate({
     update_id: 1,
@@ -67,7 +67,7 @@ test('Russian group members receive readable Russian help', async () => {
 
   assert.equal(replies.length, 1)
   assert.match(replies[0].payload.text, /Проверка устройств/)
-  assert.match(replies[0].payload.text, /пока недоступны/)
+  assert.match(replies[0].payload.text, /secret/)
 })
 
 test('unrelated group conversations and commands for another bot are ignored', async () => {

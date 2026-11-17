@@ -28,7 +28,7 @@ export default bot => {
       errorDescription = 'Unknown'
     }
 
-    log.error(`Bot Error - ${errorDescription}`, error, {
+    log.error(`Bot Error - ${errorDescription}`, {
       updateId: ctx.update?.update_id,
       messageId: ctx.msg?.message_id,
       chatId: ctx.chat?.id,
@@ -46,7 +46,7 @@ export default bot => {
       }
     } catch (replyError) {
       log.error('Bot Error Reply Failed', {
-        error: replyError,
+        failed: Boolean(replyError),
         updateId: ctx.update?.update_id,
       })
     }

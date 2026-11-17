@@ -1,12 +1,18 @@
 import { Composer } from 'grammy'
 
 import mainCommands from './mainCommands'
+import { createMonitorCommands } from './monitorCommands'
 
 //
 //
 
-const composer = new Composer()
+export const createBotRoutes = dependencies => {
+  const composer = new Composer()
 
-composer.use(mainCommands)
+  composer.use(mainCommands)
+  composer.use(createMonitorCommands(dependencies))
 
-export default composer
+  return composer
+}
+
+export default createBotRoutes

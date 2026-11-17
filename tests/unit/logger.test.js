@@ -26,6 +26,10 @@ test('logger redacts sensitive context and nested payload fields', t => {
   const logger = new Logger({ accessToken: 'context-secret-value' })
 
   logger.info('redaction-test', {
+    appKey: 'ezviz-key-sentinel',
+    HOME_1_EZVIZ_API_APP_KEY: 'home-key-sentinel',
+    appSecret: 'app-secret-sentinel',
+    TG_BOT_ACCESS_SECRET: 'chat-secret-sentinel',
     password: 'payload-secret-value',
     nested: { api_key: 'nested-secret-value' },
     safe: 'visible',
@@ -35,7 +39,7 @@ test('logger redacts sensitive context and nested payload fields', t => {
 
   assert.doesNotMatch(
     serialized,
-    /context-secret-value|payload-secret-value|nested-secret-value/,
+    /context-secret-value|payload-secret-value|nested-secret-value|sentinel/,
   )
   assert.match(serialized, /\[REDACTED\]/)
   assert.match(serialized, /visible/)

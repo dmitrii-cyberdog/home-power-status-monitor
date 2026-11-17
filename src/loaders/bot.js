@@ -66,7 +66,7 @@ export const drainBotRunner = async (runner, signal) => {
 //
 //
 
-export default async signal => {
+export default async (signal, monitorRuntime) => {
   if (!config.botSettings.token || signal?.aborted) {
     return null
   }
@@ -86,13 +86,18 @@ export default async signal => {
   bot.use(updatesHandler)
   bot.use(pendingUpdatesHandler)
   bot.use(sequentialize(ctx => ctx.chatId?.toString()))
-  bot.use(grammyRoutes)
+  bot.use(grammyRoutes(monitorRuntime))
 
   errorHandler(bot)
 
   await bot.api.setMyCommands([
     { command: 'start', description: 'Home Power Status Monitor' },
     { command: 'help', description: 'Service status and help' },
+    { command: 'secret', description: 'Authorize this chat' },
+    { command: 'status', description: 'Show home status' },
+    { command: 'status_full', description: 'Show detailed home status' },
+    { command: 'on_notification', description: 'Enable home notifications' },
+    { command: 'off_notification', description: 'Disable home notifications' },
   ])
 
   if (signal?.aborted) {
@@ -101,6 +106,9 @@ export default async signal => {
 
   //
   //
+
+  monitorRuntime.setTelegramApi(bot.api)
+  monitorRuntime.startNotifications()
 
   return run(bot, {
     runner: {

@@ -324,6 +324,9 @@ export class Request {
     Logger.debug('REQUEST - Finished', {
       request: {
         requestId,
+        //
+        status: res?.status ?? null,
+        //
         time: `${Date.now() - startRequest} ms`,
       },
       errorsCounter,
