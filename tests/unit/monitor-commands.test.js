@@ -1,9 +1,245 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 
+import { I18n } from '@grammyjs/i18n'
 import { Bot } from 'grammy'
 
 import { createBotRoutes } from '../../src/api/bot/index.js'
+import config from '../../src/config/config.js'
+import { createChatAccess } from '../../src/services/chatAccess.js'
+import { openMonitorStore } from '../../src/services/monitorStore.js'
+
+const notificationFixture = async (
+  t,
+  {
+    chat = { id: -1007, type: 'supergroup', title: 'Home' },
+    name = 'Family Home',
+    admins = [],
+  } = {},
+) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-command-'))
+
+  const store = await openMonitorStore({ directory, homeIds: ['1'] })
+
+  t.after(async () => {
+    await store.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const homes = [{ id: '1', name, status: 'unknown' }]
+
+  const access = createChatAccess({ store, homes, secret: 'test-only' })
+
+  await access.initialize()
+
+  const bot = new Bot('1:fake')
+
+  const from = { id: 7, is_bot: false, first_name: 'User' }
+  const replies = []
+  let messageId = 0
+
+  bot.botInfo = {
+    id: 1,
+    is_bot: true,
+    first_name: 'Power',
+    username: 'power_test_bot',
+  }
+
+  bot.api.config.use(async (_previous, method, payload) => {
+    const result =
+      method === 'sendMessage'
+        ? {
+            message_id: ++messageId,
+            date: 1,
+            chat,
+            from: bot.botInfo,
+            text: payload.text,
+            reply_markup: payload.reply_markup,
+          }
+        : true
+
+    replies.push({ method, payload, message: result })
+
+    return { ok: true, result }
+  })
+
+  bot.use(new I18n(config.botSettings.i18nSettings))
+
+  bot.use(
+    createBotRoutes({
+      access,
+      admins,
+      homeMonitor: { getStatuses: () => homes, check: async () => homes },
+    }),
+  )
+
+  const send = (text, replyTo) => {
+    const id = ++messageId
+
+    const entities = text.startsWith('/')
+      ? [{ type: 'bot_command', offset: 0, length: text.split(' ')[0].length }]
+      : []
+
+    return bot.handleUpdate({
+      update_id: id,
+      message: {
+        message_id: id,
+        date: 0,
+        chat,
+        from,
+        text,
+        entities,
+        reply_to_message: replyTo,
+      },
+    })
+  }
+
+  const click = (message, data, sender = from) =>
+    bot.handleUpdate({
+      update_id: ++messageId,
+      callback_query: {
+        id: String(messageId),
+        from: sender,
+        chat_instance: 'test',
+        message,
+        data,
+      },
+    })
+
+  return { access, store, homes, chat, replies, send, click }
+}
+
+test('replying to a notification prompt saves the setting and confirms it', async t => {
+  const { access, store, homes, chat, replies, send } =
+    await notificationFixture(t)
+
+  await access.authorize(String(chat.id), 'test-only', 'en')
+  await send('/on_notification@power_test_bot')
+
+  const prompt = replies.at(-1)
+
+  await send('Family Home')
+  assert.equal(replies.length, 1)
+  assert.equal(access.recipients('1', store.readChats()).length, 0)
+  await send('Missing', prompt.message)
+  assert.equal(replies.at(-1).payload.text, 'Home not found.')
+  await send(' family home ', prompt.message)
+  assert.equal(replies.at(-1).payload.text, 'Notifications enabled.')
+  assert.equal(
+    access.recipients('1', store.readChats())[0].chatId,
+    String(chat.id),
+  )
+  assert.deepEqual(prompt.payload.reply_markup, {
+    force_reply: true,
+    selective: true,
+  })
+  assert.equal(prompt.payload.reply_parameters.message_id, 1)
+
+  await send('/on_notification@power_test_bot Family Home')
+  assert.equal(replies.at(-1).payload.text, 'Notifications already enabled.')
+  await send('/off_notification@power_test_bot')
+
+  const disablePrompt = replies.at(-1).message
+
+  await send('Family Home', disablePrompt)
+  assert.equal(replies.at(-1).payload.text, 'Notifications disabled.')
+  assert.equal(access.recipients('1', store.readChats()).length, 0)
+
+  const rotatedAccess = createChatAccess({ store, homes, secret: 'rotated' })
+
+  await rotatedAccess.initialize()
+  await send('Family Home', prompt.message)
+  assert.equal(
+    replies.at(-1).payload.text,
+    'Authorize this chat with /secret <value> first.',
+  )
+  assert.equal(rotatedAccess.recipients('1', store.readChats()).length, 0)
+})
+
+test('only a named private status reply offers a subscription button', async t => {
+  const name = 'Home & '.repeat(800)
+
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    name: name.trim(),
+  })
+
+  await access.authorize('7', 'test-only', 'en')
+  await send('/status')
+  assert.ok(replies.every(({ payload }) => !payload.reply_markup))
+  replies.length = 0
+
+  await send(`/status ${name.trim()}`)
+  assert.ok(replies.length > 1)
+  assert.ok(replies.slice(0, -1).every(({ payload }) => !payload.reply_markup))
+  assert.deepEqual(replies.at(-1).payload.reply_markup.inline_keyboard, [
+    [{ text: 'Enable notifications', callback_data: 'subscription:on:1' }],
+  ])
+
+  await access.setSubscription('7', '1', true, 'en')
+  await send(`/status ${name.trim()}`)
+  assert.deepEqual(replies.at(-1).payload.reply_markup.inline_keyboard, [
+    [{ text: 'Disable notifications', callback_data: 'subscription:off:1' }],
+  ])
+
+  const group = await notificationFixture(t)
+
+  await group.access.authorize(String(group.chat.id), 'test-only', 'en')
+  await group.send('/status@power_test_bot Family Home')
+  assert.equal(group.replies.at(-1).payload.reply_markup, undefined)
+})
+
+test('private status callbacks confirm saved actions and reject invalid targets', async t => {
+  const { access, store, homes, replies, send, click } =
+    await notificationFixture(t, {
+      chat: { id: 7, type: 'private', first_name: 'User' },
+    })
+
+  await access.authorize('7', 'test-only', 'en')
+  await send('/status Family Home')
+
+  const card = replies.at(-1).message
+
+  for (const [message, data, sender] of [
+    [card, 'subscription:off:999'],
+    [card, 'subscription:toggle:1'],
+    [card, 'subscription:on:1', { id: 8, is_bot: false, first_name: 'Other' }],
+    [{ ...card, date: 0 }, 'subscription:on:1'],
+    [{ ...card, chat: { id: -1007, type: 'supergroup' } }, 'subscription:on:1'],
+  ]) {
+    await click(message, data, sender)
+    assert.equal(replies.at(-1).method, 'answerCallbackQuery')
+    assert.equal(access.recipients('1', store.readChats()).length, 0)
+  }
+
+  await click(card, 'subscription:on:1')
+  assert.equal(replies.at(-2).payload.text, 'Notifications enabled.')
+  assert.equal(replies.at(-1).method, 'editMessageReplyMarkup')
+  assert.equal(access.recipients('1', store.readChats()).length, 1)
+
+  const markup = replies.at(-1).payload.reply_markup
+
+  assert.deepEqual(markup.inline_keyboard, [
+    [{ text: 'Disable notifications', callback_data: 'subscription:off:1' }],
+  ])
+  await click({ ...card, reply_markup: markup }, 'subscription:on:1')
+  assert.equal(replies.at(-1).method, 'answerCallbackQuery')
+  assert.equal(replies.at(-1).payload.text, 'Notifications already enabled.')
+  await click({ ...card, reply_markup: markup }, 'subscription:off:1')
+  assert.equal(replies.at(-2).payload.text, 'Notifications disabled.')
+  assert.equal(access.recipients('1', store.readChats()).length, 0)
+
+  const rotated = createChatAccess({ store, homes, secret: 'rotated' })
+
+  await rotated.initialize()
+  await click(card, 'subscription:on:1')
+  assert.equal(replies.at(-1).method, 'answerCallbackQuery')
+  assert.match(replies.at(-1).payload.text, /Authorize this chat/)
+  assert.equal(rotated.recipients('1', store.readChats()).length, 0)
+})
 
 test('protected commands gate home reads and group commands require addressing', async () => {
   let authorized = false
@@ -96,7 +332,7 @@ test('named status waits for the refresh and renders committed results', async (
   })
   bot.use(
     createBotRoutes({
-      access: { isAuthorized: () => true },
+      access: { isAuthorized: () => true, isSubscribed: () => false },
       homeMonitor: {
         getStatuses: () => [
           { id: '1', name: 'Family Home', status: 'unknown' },

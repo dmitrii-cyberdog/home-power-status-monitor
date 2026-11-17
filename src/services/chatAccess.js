@@ -20,16 +20,12 @@ export const createChatAccess = ({
 
   const known = new Set(homes.map(home => home.id))
 
-  const isAuthorized = chatId => {
-    const registry = store.readChats()
+  const isAuthorizedIn = (chatId, registry) =>
+    ready &&
+    Boolean(secret) &&
+    registry.chats[String(chatId)]?.authorizedGeneration === registry.generation
 
-    return (
-      ready &&
-      Boolean(secret) &&
-      registry.chats[String(chatId)]?.authorizedGeneration ===
-        registry.generation
-    )
-  }
+  const isAuthorized = chatId => isAuthorizedIn(chatId, store.readChats())
 
   const recipients = (homeId, registry) => {
     if (!ready || !secret || !known.has(homeId)) {
@@ -87,6 +83,15 @@ export const createChatAccess = ({
       ready = true
     },
     isAuthorized,
+    isSubscribed(chatId, homeId) {
+      const registry = store.readChats()
+
+      return (
+        known.has(homeId) &&
+        isAuthorizedIn(chatId, registry) &&
+        Boolean(registry.chats[String(chatId)].subscriptions[homeId])
+      )
+    },
     async authorize(chatId, suppliedSecret, locale) {
       if (!ready || !secret) {
         return 'disabled'

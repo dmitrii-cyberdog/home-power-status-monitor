@@ -112,7 +112,7 @@ export default async (signal, monitorRuntime) => {
 
   return run(bot, {
     runner: {
-      fetch: { allowed_updates: ['message'] },
+      fetch: { allowed_updates: ['message', 'callback_query'] },
     },
     sink: { concurrency: 50 },
   })

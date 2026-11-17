@@ -1,4 +1,4 @@
-import { Composer } from 'grammy'
+import { Composer, InlineKeyboard } from 'grammy'
 
 import { createAccessHandler } from '../../middlewares/bot/accessHandler'
 
@@ -7,16 +7,52 @@ import {
   renderStatusMessages,
 } from './monitorMessages'
 
+const notificationCommands = ['on_notification', 'off_notification']
+const monitorCommands = ['status', 'status_full', ...notificationCommands]
+const subscriptionAction = /^subscription:(on|off):([1-9]\d*)$/
+
+const subscriptionKeyboard = (ctx, homeId, enabled) =>
+  new InlineKeyboard().text(
+    ctx.t(
+      enabled ? 'subscription_button_disable' : 'subscription_button_enable',
+    ),
+    `subscription:${enabled ? 'off' : 'on'}:${homeId}`,
+  )
+
+const commandEntity = message =>
+  message?.entities?.find(
+    entity => entity.type === 'bot_command' && entity.offset === 0,
+  )
+
+const notificationReply = ctx => {
+  const message = ctx.message
+
+  const prompt = message?.reply_to_message
+
+  if (
+    !message?.text ||
+    commandEntity(message) ||
+    prompt?.from?.id !== ctx.me.id
+  ) {
+    return undefined
+  }
+
+  return notificationCommands.find(
+    command => prompt.text === ctx.t(`subscription_prompt_${command}`),
+  )
+}
+
+//
+//
+
 export const createMonitorCommands = ({ access, homeMonitor }) => {
   const composer = new Composer()
 
   composer.use(async (ctx, next) => {
-    if (ctx.chat?.type !== 'private') {
-      const command = ctx.msg?.entities?.find(
-        entity => entity.type === 'bot_command' && entity.offset === 0,
-      )
+    const command = commandEntity(ctx.msg)
 
-      const text = command ? ctx.msg.text.slice(0, command.length) : ''
+    if (ctx.chat?.type !== 'private' && command) {
+      const text = ctx.msg.text.slice(0, command.length)
 
       if (!text.toLowerCase().endsWith(`@${ctx.me.username.toLowerCase()}`)) {
         return
@@ -25,11 +61,10 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
 
     await next()
   })
+
   composer.command('secret', async ctx => {
     try {
-      const entity = ctx.msg.entities.find(
-        item => item.type === 'bot_command' && item.offset === 0,
-      )
+      const entity = commandEntity(ctx.msg)
 
       const supplied = ctx.msg.text.slice(entity.length + 1)
 
@@ -53,72 +88,170 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
     }
   })
 
+  //
+  //
+
+  composer.callbackQuery(/^subscription:/, async ctx => {
+    const action = subscriptionAction.exec(ctx.callbackQuery.data)
+
+    const message = ctx.callbackQuery.message
+
+    if (
+      !action ||
+      !message?.date ||
+      message.chat.type !== 'private' ||
+      message.chat.id !== ctx.from.id
+    ) {
+      await ctx.answerCallbackQuery()
+
+      return
+    }
+
+    const chatId = String(message.chat.id)
+
+    if (!access.isAuthorized(chatId)) {
+      await ctx.answerCallbackQuery({ text: ctx.t('access_denied') })
+
+      return
+    }
+
+    const [, target, homeId] = action
+
+    if (!homeMonitor.getStatuses().some(home => home.id === homeId)) {
+      await ctx.answerCallbackQuery({ text: ctx.t('monitor_not_found') })
+
+      return
+    }
+
+    const locale = (await ctx.i18n?.getLocale()) ?? 'en'
+
+    const enabled = target === 'on'
+
+    let result
+
+    try {
+      result = await access.setSubscription(chatId, homeId, enabled, locale)
+    } catch (error) {
+      await ctx.answerCallbackQuery()
+
+      throw error
+    }
+
+    await ctx.answerCallbackQuery({ text: ctx.t(`subscription_${result}`) })
+
+    const replyMarkup = subscriptionKeyboard(ctx, homeId, enabled)
+
+    const button = message.reply_markup?.inline_keyboard[0]?.[0]
+
+    const [nextButton] = replyMarkup.inline_keyboard[0]
+
+    if (
+      button?.text !== nextButton.text ||
+      button?.callback_data !== nextButton.callback_data
+    ) {
+      try {
+        await ctx.editMessageReplyMarkup({ reply_markup: replyMarkup })
+      } catch {
+        ctx.log?.warning('subscription_keyboard_edit_failed', {
+          updateId: ctx.update.update_id,
+        })
+      }
+    }
+  })
+
+  //
+  //
+
   const protectedCommands = new Composer()
 
   protectedCommands.use(createAccessHandler({ access }))
-  protectedCommands.command(
-    ['status', 'status_full', 'on_notification', 'off_notification'],
-    async ctx => {
-      const command = ctx.msg.text.split(/[\s@]/)[0].slice(1)
 
-      const isStatus = command === 'status' || command === 'status_full'
+  protectedCommands.on('message:text', async ctx => {
+    const replyCommand = notificationReply(ctx)
 
-      const argument = ctx.match.trim().toLowerCase()
+    const command = replyCommand ?? ctx.message.text.split(/[\s@]/)[0].slice(1)
 
-      const statuses = homeMonitor.getStatuses()
+    const isStatus = command === 'status' || command === 'status_full'
 
-      const home = statuses.find(
-        candidate => candidate.name.toLowerCase() === argument,
+    const argument = (replyCommand ? ctx.message.text : ctx.match)
+      .trim()
+      .toLowerCase()
+
+    if (!isStatus && !argument) {
+      await ctx.reply(ctx.t(`subscription_prompt_${command}`), {
+        reply_markup: { force_reply: true, selective: true },
+        reply_parameters: { message_id: ctx.message.message_id },
+      })
+
+      return
+    }
+
+    const statuses = homeMonitor.getStatuses()
+
+    const home = statuses.find(
+      candidate => candidate.name.toLowerCase() === argument,
+    )
+
+    if (argument && !home) {
+      await ctx.reply(ctx.t('monitor_not_found'))
+
+      return
+    }
+
+    if (isStatus) {
+      const updatedStatuses = await homeMonitor.check()
+
+      const render =
+        command === 'status_full'
+          ? renderFullStatusMessages
+          : renderStatusMessages
+
+      const messages = render(
+        argument
+          ? updatedStatuses.filter(updated => updated.id === home.id)
+          : updatedStatuses,
+        ctx.t.bind(ctx),
       )
 
-      if ((!isStatus || argument) && !home) {
-        await ctx.reply(
-          ctx.t(argument ? 'monitor_not_found' : 'monitor_home_required'),
-        )
+      const chatId = String(ctx.chat.id)
 
-        return
-      }
+      for (const [index, text] of messages.entries()) {
+        const options = { parse_mode: 'HTML' }
 
-      if (isStatus) {
-        const updatedStatuses = await homeMonitor.check()
-
-        const render =
-          command === 'status_full'
-            ? renderFullStatusMessages
-            : renderStatusMessages
-
-        for (const text of render(
-          argument
-            ? updatedStatuses.filter(updated => updated.id === home.id)
-            : updatedStatuses,
-          ctx.t.bind(ctx),
-        )) {
-          await ctx.reply(text, { parse_mode: 'HTML' })
+        if (
+          command === 'status' &&
+          argument &&
+          ctx.chat.type === 'private' &&
+          index === messages.length - 1 &&
+          access.isAuthorized(chatId)
+        ) {
+          options.reply_markup = subscriptionKeyboard(
+            ctx,
+            home.id,
+            access.isSubscribed(chatId, home.id),
+          )
         }
 
-        return
+        await ctx.reply(text, options)
       }
 
-      const locale = (await ctx.i18n?.getLocale()) ?? 'en'
+      return
+    }
 
-      const result = await access.setSubscription(
-        String(ctx.chat.id),
-        home.id,
-        command === 'on_notification',
-        locale,
-      )
+    const locale = (await ctx.i18n?.getLocale()) ?? 'en'
 
-      await ctx.reply(ctx.t(`subscription_${result}`))
-    },
-  )
+    const result = await access.setSubscription(
+      String(ctx.chat.id),
+      home.id,
+      command === 'on_notification',
+      locale,
+    )
+
+    await ctx.reply(ctx.t(`subscription_${result}`))
+  })
+
   composer.filter(
-    ctx =>
-      ctx.hasCommand([
-        'status',
-        'status_full',
-        'on_notification',
-        'off_notification',
-      ]),
+    ctx => ctx.hasCommand(monitorCommands) || Boolean(notificationReply(ctx)),
     protectedCommands,
   )
 
