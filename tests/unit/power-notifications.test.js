@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
+import { createChatAccess } from '../../src/services/chatAccess.js'
 import { openMonitorStore } from '../../src/services/monitorStore.js'
 import { createPowerNotifications } from '../../src/services/powerNotifications.js'
 
@@ -38,6 +39,91 @@ const fixture = async t => {
 
   return store
 }
+
+test('cleared chat deliveries are discarded even after reauthorization and resubscription', async t => {
+  const store = await fixture(t)
+  const homes = [{ id: '1', name: 'Home' }]
+  const access = createChatAccess({ store, secret: 'secret', homes })
+  const sent = []
+
+  await access.initialize()
+  await access.authorize('1', 'secret', 'en')
+  await access.setSubscription('1', '1', true, 'en')
+
+  const [recipient] = access.recipients('1', store.readChats())
+
+  await store.updateHome('1', record => {
+    record.pendingDeliveries = record.pendingDeliveries
+      .filter(delivery => delivery.chatId === '1')
+      .map(delivery => ({ ...delivery, ...recipient }))
+
+    return record
+  })
+  await access.clearChats('1')
+  await access.authorize('1', 'secret', 'en')
+  await access.setSubscription('1', '1', true, 'en')
+
+  const dispatcher = createPowerNotifications({
+    store,
+    homes,
+    access,
+    translate: () => key => key,
+    send: async chatId => sent.push(chatId),
+  })
+
+  await dispatcher.flush()
+  assert.deepEqual(sent, [])
+  assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+  assert.equal(access.isSubscribed('1', '1'), true)
+})
+
+test('a delayed delivery refusal cannot disable a subscription created after a clear', async t => {
+  const store = await fixture(t)
+  const homes = [{ id: '1', name: 'Home' }]
+  const access = createChatAccess({ store, secret: 'secret', homes })
+
+  await access.initialize()
+  await access.authorize('1', 'secret', 'en')
+  await access.setSubscription('1', '1', true, 'en')
+
+  const [recipient] = access.recipients('1', store.readChats())
+
+  await store.updateHome('1', record => {
+    record.pendingDeliveries = [
+      { ...record.pendingDeliveries[0], ...recipient },
+    ]
+
+    return record
+  })
+
+  const started = Promise.withResolvers()
+  const result = Promise.withResolvers()
+
+  const dispatcher = createPowerNotifications({
+    store,
+    homes,
+    access,
+    translate: () => key => key,
+    send: () => {
+      started.resolve()
+
+      return result.promise
+    },
+  })
+
+  const flushing = dispatcher.flush()
+
+  await started.promise
+  await access.clearChats('1')
+  await access.authorize('1', 'secret', 'en')
+  await access.setSubscription('1', '1', true, 'en')
+  result.reject({
+    error_code: 403,
+    description: 'Forbidden: bot was blocked by the user',
+  })
+  await flushing
+  assert.equal(access.isSubscribed('1', '1'), true)
+})
 
 test('failed earlier events block only their home/chat; revoked entries are removed', async t => {
   const store = await fixture(t)

@@ -33,6 +33,26 @@ if (!supportedLocales.includes(defaultLocale)) {
 
 const storageFolder = path.resolve(process.cwd(), '../system')
 
+const admins = new Set()
+
+for (let index = 1; index <= 50; index++) {
+  const variable = `TG_ADMIN_${index}`
+
+  const value = process.env[variable]?.trim()
+
+  if (!value) {
+    continue
+  }
+
+  const id = Number(value)
+
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(id)) {
+    throw new Error(`${variable} must be a positive Telegram user ID`)
+  }
+
+  admins.add(id)
+}
+
 //
 //
 
@@ -78,6 +98,7 @@ export default {
   botSettings: {
     token: process.env.TG_BOT_TOKEN || '',
     accessSecret: process.env.TG_BOT_ACCESS_SECRET || '',
+    admins: [...admins],
 
     i18nSettings: {
       defaultLocale,

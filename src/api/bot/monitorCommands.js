@@ -49,10 +49,12 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
   const composer = new Composer()
 
   composer.use(async (ctx, next) => {
-    const command = commandEntity(ctx.msg)
+    const message = ctx.message
+
+    const command = commandEntity(message)
 
     if (ctx.chat?.type !== 'private' && command) {
-      const text = ctx.msg.text.slice(0, command.length)
+      const text = message.text.slice(0, command.length)
 
       if (!text.toLowerCase().endsWith(`@${ctx.me.username.toLowerCase()}`)) {
         return
@@ -216,14 +218,19 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       const chatId = String(ctx.chat.id)
 
       for (const [index, text] of messages.entries()) {
+        if (!access.isAuthorized(chatId)) {
+          await ctx.reply(ctx.t('access_denied'))
+
+          return
+        }
+
         const options = { parse_mode: 'HTML' }
 
         if (
           command === 'status' &&
           argument &&
           ctx.chat.type === 'private' &&
-          index === messages.length - 1 &&
-          access.isAuthorized(chatId)
+          index === messages.length - 1
         ) {
           options.reply_markup = subscriptionKeyboard(
             ctx,

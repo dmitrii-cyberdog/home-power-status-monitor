@@ -53,6 +53,7 @@ server overlays. Replace `CRON_CHECK_POWER_STATUS_TEMPLATE` with
 | `DEFAULT_LOCALE`                     | `en`    | English or Russian.                                   |
 | `TG_BOT_TOKEN`                       | empty   | Enable Telegram polling.                              |
 | `TG_BOT_ACCESS_SECRET`               | empty   | Exact secret for each chat's `/secret` authorization. |
+| `TG_ADMIN_1` through `TG_ADMIN_50`   | empty   | Telegram user IDs allowed to clear chat records.      |
 | `CRON_CHECK_POWER_STATUS_IS_ENABLED` | `0`     | Enable interval polling.                              |
 | `POWER_CHECK_INTERVAL_SECONDS`       | `60`    | Poll and notification interval.                       |
 | `POWER_OFF_FAILED_CHECKS`            | `3`     | Consecutive offline samples per device.               |
@@ -135,6 +136,14 @@ Authorize each chat with `/secret <value>`. Use `/status [home name]`, or
 `/status@your_bot_username` and equivalent addressed forms. Grants survive a
 restart with the same secret. Secret rotation invalidates grants while retaining
 preferences. All group members share the chat's access and subscriptions.
+
+In a private chat, `/status <home name>` includes a button to enable or disable
+that home's notifications for the current chat.
+
+Set administrator user IDs in `src/.env.local`. In a private chat, admins can
+run `/clear_chats <chat_id>` for one chat or `/clear_chats all` for the entire
+registry. Cleared chats must authorize again with `/secret` and re-enable their
+subscriptions. Home history and power statistics are preserved.
 
 JSON records live in `volume/homes/<id>.json` and `volume/chats.json`. Only one
 process may own `volume/.monitor.lock`. For stale-lock recovery, first verify

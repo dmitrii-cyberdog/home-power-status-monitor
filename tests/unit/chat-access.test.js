@@ -82,3 +82,55 @@ test('exact authentication is limited per chat and empty secrets disable grants'
   assert.equal(disabled.isAuthorized('1'), false)
   assert.equal(await disabled.authorize('1', '', 'en'), 'disabled')
 })
+
+test('chat clears persist and revoke subscriptions without touching home records', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-clear-'))
+
+  let store = await openMonitorStore({ directory, homeIds: ['1'] })
+
+  t.after(async () => {
+    await store.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const make = () =>
+    createChatAccess({ store, secret: 'secret', homes: [{ id: '1' }] })
+
+  let access = make()
+
+  await access.initialize()
+  await access.authorize('-1007', 'secret', 'en')
+  await access.authorize('8', 'secret', 'ru')
+  await access.setSubscription('-1007', '1', true, 'en')
+
+  const previous = store.readChats()
+
+  const home = await store.updateHome('1', record => {
+    record.eventSequence = 2
+
+    return record
+  })
+
+  const clear = access.clearChats('-1007')
+
+  const denied = assert.rejects(
+    access.setSubscription('-1007', '1', true, 'en'),
+    /Access denied/,
+  )
+
+  assert.equal(await clear, 1)
+  await denied
+  assert.equal(access.isAuthorized('-1007'), false)
+  assert.equal(access.isSubscribed('-1007', '1'), false)
+  assert.equal(access.isAuthorized('8'), true)
+  assert.equal(await access.clearChats('-1007'), 0)
+  assert.equal(await access.clearChats('all'), 1)
+  await store.close()
+  store = await openMonitorStore({ directory, homeIds: ['1'] })
+  access = make()
+  await access.initialize()
+  assert.deepEqual(store.readChats(), { ...previous, chats: {} })
+  assert.deepEqual(store.readHome('1'), home)
+  assert.equal(await access.authorize('-1007', 'secret', 'en'), 'authorized')
+  assert.equal(access.isSubscribed('-1007', '1'), false)
+})

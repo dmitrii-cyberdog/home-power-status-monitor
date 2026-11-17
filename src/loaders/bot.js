@@ -86,7 +86,9 @@ export default async (signal, monitorRuntime) => {
   bot.use(updatesHandler)
   bot.use(pendingUpdatesHandler)
   bot.use(sequentialize(ctx => ctx.chatId?.toString()))
-  bot.use(grammyRoutes(monitorRuntime))
+  bot.use(
+    grammyRoutes({ ...monitorRuntime, admins: config.botSettings.admins }),
+  )
 
   errorHandler(bot)
 

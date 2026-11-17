@@ -2,7 +2,7 @@ import { after } from 'node:test'
 
 // Tests must never read private environment files or contact Telegram.
 for (const key of Object.keys(process.env)) {
-  if (/^(HOME_|DEVICE_|EZVIZ_|POWER_)/.test(key)) {
+  if (/^(HOME_|DEVICE_|EZVIZ_|POWER_|TG_ADMIN_)/.test(key)) {
     delete process.env[key]
   }
 }

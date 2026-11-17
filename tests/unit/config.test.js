@@ -22,7 +22,7 @@ const loadConfig = (t, overrides = {}, files = {}) => {
   delete environment.NODE_ENV
 
   for (const key of Object.keys(environment)) {
-    if (/^(HOME_|DEVICE_|EZVIZ_|POWER_)/.test(key)) {
+    if (/^(HOME_|DEVICE_|EZVIZ_|POWER_|TG_ADMIN_)/.test(key)) {
       delete environment[key]
     }
   }
@@ -65,9 +65,31 @@ test('configuration has no HTTP settings and defaults to disabled bot and cron',
 
   assert.equal(config.appSettings, undefined)
   assert.equal(config.botSettings.token, '')
+  assert.deepEqual(config.botSettings.admins, [])
   assert.deepEqual(config.cron.checkPowerStatus, {
     isEnabled: false,
   })
+})
+
+test('admin configuration reads sparse slots from dotenv and deduplicates IDs', t => {
+  const result = loadConfig(
+    t,
+    { TG_ADMIN_5: '900' },
+    { '.env': 'TG_ADMIN_1=900\nTG_ADMIN_50=910\n' },
+  )
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout).botSettings.admins, [900, 910])
+})
+
+test('invalid admin IDs fail configuration without exposing their values', t => {
+  for (const value of ['900x', '-900', '9007199254740992']) {
+    const result = loadConfig(t, { TG_ADMIN_1: value })
+
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /TG_ADMIN_1/)
+    assert.ok(!result.stderr.includes(value))
+  }
 })
 
 test('dev loads base settings and the dev overlay', t => {

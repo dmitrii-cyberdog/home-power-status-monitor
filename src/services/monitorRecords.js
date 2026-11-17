@@ -28,7 +28,7 @@ const homeId = value =>
   idPattern.test(value) &&
   Number.isSafeInteger(Number(value))
 
-const chatId = value =>
+export const isChatId = value =>
   typeof value === 'string' &&
   chatPattern.test(value) &&
   Number.isSafeInteger(Number(value))
@@ -122,7 +122,7 @@ export const validateHomeRecord = (value, id) => {
       !date(delivery.detectedAt) ||
       typeof delivery.baseline !== 'boolean' ||
       typeof delivery.uncertain !== 'boolean' ||
-      !chatId(delivery.chatId) ||
+      !isChatId(delivery.chatId) ||
       !text(delivery.generation) ||
       !text(delivery.subscriptionId) ||
       !['en', 'ru'].includes(delivery.locale) ||
@@ -157,7 +157,7 @@ export const validateChatRegistry = value => {
 
   for (const [id, chat] of Object.entries(v.chats)) {
     if (
-      !chatId(id) ||
+      !isChatId(id) ||
       !exactKeys(chat, ['authorizedGeneration', 'locale', 'subscriptions']) ||
       !(
         chat.authorizedGeneration === null || text(chat.authorizedGeneration)

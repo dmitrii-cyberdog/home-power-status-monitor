@@ -95,7 +95,7 @@ export const createPowerNotifications = ({
             await remove(home.id, delivery)
           } catch (error) {
             if (unavailableChat(error)) {
-              await access.disableSubscriptions(delivery.chatId)
+              await access.disableSubscriptions(delivery)
             }
 
             log?.error('Power alert delivery failed', {

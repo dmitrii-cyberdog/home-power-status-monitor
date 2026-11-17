@@ -18,6 +18,7 @@ const notificationFixture = async (
     chat = { id: -1007, type: 'supergroup', title: 'Home' },
     name = 'Family Home',
     admins = [],
+    check,
   } = {},
 ) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-command-'))
@@ -72,7 +73,10 @@ const notificationFixture = async (
     createBotRoutes({
       access,
       admins,
-      homeMonitor: { getStatuses: () => homes, check: async () => homes },
+      homeMonitor: {
+        getStatuses: () => homes,
+        check: check ?? (async () => homes),
+      },
     }),
   )
 
@@ -208,9 +212,20 @@ test('private status callbacks confirm saved actions and reject invalid targets'
     [card, 'subscription:toggle:1'],
     [card, 'subscription:on:1', { id: 8, is_bot: false, first_name: 'Other' }],
     [{ ...card, date: 0 }, 'subscription:on:1'],
-    [{ ...card, chat: { id: -1007, type: 'supergroup' } }, 'subscription:on:1'],
+    [
+      {
+        ...card,
+        chat: { id: -1007, type: 'supergroup' },
+        text: '/home',
+        entities: [{ type: 'bot_command', offset: 0, length: 5 }],
+      },
+      'subscription:on:1',
+    ],
   ]) {
+    const calls = replies.length
+
     await click(message, data, sender)
+    assert.equal(replies.length, calls + 1)
     assert.equal(replies.at(-1).method, 'answerCallbackQuery')
     assert.equal(access.recipients('1', store.readChats()).length, 0)
   }
@@ -239,6 +254,82 @@ test('private status callbacks confirm saved actions and reject invalid targets'
   assert.equal(replies.at(-1).method, 'answerCallbackQuery')
   assert.match(replies.at(-1).payload.text, /Authorize this chat/)
   assert.equal(rotated.recipients('1', store.readChats()).length, 0)
+})
+
+test('only a configured admin in a private chat can clear registry records', async t => {
+  const privateChat = { id: 7, type: 'private', first_name: 'User' }
+
+  const ordinary = await notificationFixture(t, {
+    chat: privateChat,
+    admins: [8],
+  })
+
+  await ordinary.access.authorize('7', 'test-only', 'en')
+  await ordinary.send('/clear_chats all')
+  assert.equal(ordinary.replies.at(-1)?.payload.text, 'Admin access required.')
+  assert.equal(ordinary.access.isAuthorized('7'), true)
+
+  const group = await notificationFixture(t, { admins: [7] })
+
+  await group.access.authorize(String(group.chat.id), 'test-only', 'en')
+  await group.send('/clear_chats@power_test_bot all')
+  assert.equal(group.replies.length, 0)
+  assert.equal(group.access.isAuthorized(String(group.chat.id)), true)
+
+  const { access, send, replies } = await notificationFixture(t, {
+    chat: privateChat,
+    admins: [7],
+  })
+
+  await access.authorize('-1007', 'test-only', 'en')
+  await access.authorize('8', 'test-only', 'en')
+
+  for (const text of [
+    '/clear_chats',
+    '/clear_chats -1007 extra',
+    '/clear_chats 0',
+    '/clear_chats 9007199254740992',
+  ]) {
+    await send(text)
+    assert.match(replies.at(-1).payload.text, /Use \/clear_chats/)
+  }
+
+  await send('/clear_chats -1007')
+  assert.match(replies.at(-1).payload.text, /Chat records removed:.*1/)
+  assert.equal(access.isAuthorized('-1007'), false)
+  assert.equal(access.isAuthorized('8'), true)
+  await send('/clear_chats -1007')
+  assert.equal(replies.at(-1).payload.text, 'Chat record not found.')
+  await send('/clear_chats all')
+  assert.match(replies.at(-1).payload.text, /Chat records removed:.*1/)
+  assert.equal(access.isAuthorized('8'), false)
+})
+
+test('clearing a chat during a status refresh revokes access to the result', async t => {
+  const started = Promise.withResolvers()
+  const result = Promise.withResolvers()
+
+  const { access, homes, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    check: () => {
+      started.resolve()
+
+      return result.promise
+    },
+  })
+
+  await access.authorize('7', 'test-only', 'en')
+
+  const handling = send('/status Family Home')
+
+  await started.promise
+  await access.clearChats('7')
+  result.resolve(homes)
+  await handling
+  assert.deepEqual(
+    replies.map(({ payload }) => payload.text),
+    ['Authorize this chat with /secret <value> first.'],
+  )
 })
 
 test('protected commands gate home reads and group commands require addressing', async () => {

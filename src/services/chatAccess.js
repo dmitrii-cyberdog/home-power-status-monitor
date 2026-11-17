@@ -46,6 +46,18 @@ export const createChatAccess = ({
       }))
   }
 
+  const isDeliveryAllowedIn = (delivery, registry) => {
+    const homeId = delivery.eventId.split(':')[0]
+
+    return (
+      known.has(homeId) &&
+      isAuthorizedIn(delivery.chatId, registry) &&
+      registry.generation === delivery.generation &&
+      registry.chats[delivery.chatId].subscriptions[homeId]?.id ===
+        delivery.subscriptionId
+    )
+  }
+
   return {
     async initialize() {
       const previous = store.readChats()
@@ -156,6 +168,10 @@ export const createChatAccess = ({
       let result
 
       await store.updateChats(registry => {
+        if (!isAuthorizedIn(id, registry)) {
+          throw new Error('Access denied')
+        }
+
         const chat = registry.chats[id]
 
         const existing = chat.subscriptions[homeId]
@@ -180,21 +196,31 @@ export const createChatAccess = ({
 
       return result
     },
+    async clearChats(target) {
+      let removed = 0
+
+      await store.updateChats(registry => {
+        if (target === 'all') {
+          removed = Object.keys(registry.chats).length
+          registry.chats = {}
+        } else if (Object.hasOwn(registry.chats, target)) {
+          removed = 1
+          delete registry.chats[target]
+        }
+
+        return registry
+      })
+
+      return removed
+    },
     recipients,
     isDeliveryAllowed(delivery) {
-      const homeId = delivery.eventId.split(':')[0]
-
-      return recipients(homeId, store.readChats()).some(
-        recipient =>
-          recipient.chatId === delivery.chatId &&
-          recipient.generation === delivery.generation &&
-          recipient.subscriptionId === delivery.subscriptionId,
-      )
+      return isDeliveryAllowedIn(delivery, store.readChats())
     },
-    async disableSubscriptions(chatId) {
+    async disableSubscriptions(delivery) {
       await store.updateChats(registry => {
-        if (registry.chats[String(chatId)]) {
-          registry.chats[String(chatId)].subscriptions = {}
+        if (isDeliveryAllowedIn(delivery, registry)) {
+          registry.chats[delivery.chatId].subscriptions = {}
         }
 
         return registry
