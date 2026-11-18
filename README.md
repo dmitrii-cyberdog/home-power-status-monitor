@@ -109,7 +109,8 @@ The root script runs from `src`, as required by storage/localization paths. If
 both Telegram and cron are disabled, no background service keeps the process
 alive, so it exits normally.
 
-In groups, `/help@your_bot_username` works; unrelated messages are ignored.
+When added to a group, the bot sends setup instructions with its chat ID. In an
+existing group, use `/help@your_bot_username` for the same instructions.
 Telegram language is used when supported, with `DEFAULT_LOCALE` as fallback.
 
 Run one check without enabling its schedule:

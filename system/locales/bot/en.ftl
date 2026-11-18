@@ -1,5 +1,20 @@
 ﻿start = Home Power Status Monitor is ready. Use /help.
-help = Home Power Status Monitor: use /secret <value> in a private chat to authorize it (groups are approved by a bot admin), /status [home name] for a brief summary, /status_full [home name] for details, /on_notification home name, /off_notification home name. In groups address commands to @BotUsername. Use /en or /ru to set this chat’s language.
+help =
+    /status [home name] — brief power status
+    /status_full [home name] — detailed status and history
+    /on_notification <home name> — enable notifications
+    /off_notification <home name> — disable notifications
+    /en or /ru — change this chat’s language
+help_private_access =
+    Home Power Status Monitor
+
+    Send /secret <value> here to authorize this private chat.
+    To approve a group, a configured bot admin sends /authorize_group <chat_id> here. Run { $helpCommand } in the group to get its chat ID.
+help_group_access =
+    Home Power Status Monitor
+
+    Use /secret only in a private chat. A configured bot admin can approve this group by sending the command below in a private chat with the bot.
+help_group_commands = In groups, address commands to this bot by username, for example { $helpCommand } or { $statusCommand }.
 language_selected = Chat language: English.
 general_error = Operation failed. Please try again later.
 pending_request_exists = Your previous requests are still processing. Please wait a moment.
