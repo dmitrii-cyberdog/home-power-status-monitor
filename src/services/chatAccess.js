@@ -1,12 +1,21 @@
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 
+import config from '../config'
+
+import { normalizeLanguageCode } from '../utils'
+
 const derive = promisify(scrypt)
 
 const digest = (secret, salt) =>
   derive(secret, salt, 64, { N: 16384, r: 8, p: 1, maxmem: 32 * 1024 * 1024 })
 
-const localeOf = locale => (locale === 'ru' ? 'ru' : 'en')
+const createChatEntry = locale => ({
+  authorizedGeneration: null, // Registry generation that granted access, or null.
+  grantId: null, // ID for this grant, or null when unauthorized. Older records may omit it.
+  locale: normalizeLanguageCode(locale) ?? config.generalSettings.defaultLocale, // Saved chat language.
+  subscriptions: {}, // Subscriptions keyed by configured home ID.
+})
 
 export const createChatAccess = ({
   store,
@@ -39,21 +48,16 @@ export const createChatAccess = ({
           chat.subscriptions[homeId],
       )
       .map(([chatId, chat]) => ({
-        chatId,
-        generation: registry.generation,
-        subscriptionId: chat.subscriptions[homeId].id,
-        locale: chat.locale,
+        chatId, // Telegram chat ID. Combined with eventId, identifies one delivery.
+        generation: registry.generation, // Access generation required at dispatch.
+        subscriptionId: chat.subscriptions[homeId].id, // Subscription required at dispatch.
+        locale: chat.locale, // Snapshot kept for record compatibility. Dispatch resolves the current locale.
       }))
   }
 
   const grant = (id, locale) =>
     store.updateChats(next => {
-      next.chats[id] ??= {
-        authorizedGeneration: null,
-        grantId: null,
-        locale: localeOf(locale),
-        subscriptions: {},
-      }
+      next.chats[id] ??= createChatEntry(locale)
 
       // A repeated approval keeps the grant; a new one invalidates old sends.
       if (next.chats[id].authorizedGeneration !== next.generation) {
@@ -61,7 +65,6 @@ export const createChatAccess = ({
       }
 
       next.chats[id].authorizedGeneration = next.generation
-      next.chats[id].locale = localeOf(locale)
 
       return next
     })
@@ -97,7 +100,10 @@ export const createChatAccess = ({
         const salt = randomBytes(16).toString('hex')
 
         const verifier = secret
-          ? { salt, digest: (await digest(secret, salt)).toString('hex') }
+          ? {
+              salt, // Random 16-byte salt, encoded in hex.
+              digest: (await digest(secret, salt)).toString('hex'), // 64-byte scrypt digest, encoded in hex.
+            }
           : null
 
         await store.updateChats(registry => {
@@ -136,6 +142,19 @@ export const createChatAccess = ({
       ready = true
     },
     isAuthorized,
+    getLocale(chatId) {
+      return store.readChats().chats[String(chatId)]?.locale
+    },
+    async setLocale(chatId, locale) {
+      const id = String(chatId)
+
+      await store.updateChats(registry => {
+        registry.chats[id] ??= createChatEntry(locale)
+        registry.chats[id].locale = locale
+
+        return registry
+      })
+    },
     captureGrant(chatId) {
       const registry = store.readChats()
 
@@ -219,7 +238,7 @@ export const createChatAccess = ({
 
       return 'authorized'
     },
-    async setSubscription(chatId, homeId, enabled, locale) {
+    async setSubscription(chatId, homeId, enabled) {
       const id = String(chatId)
 
       if (!isAuthorized(id) || !known.has(homeId)) {
@@ -244,9 +263,9 @@ export const createChatAccess = ({
           : existing
             ? 'disabled'
             : 'already_disabled'
-        chat.locale = localeOf(locale)
 
         if (enabled && !existing) {
+          // A new ID distinguishes re-subscription from previously queued deliveries.
           chat.subscriptions[homeId] = { id: randomUUID() }
         } else if (!enabled) {
           delete chat.subscriptions[homeId]

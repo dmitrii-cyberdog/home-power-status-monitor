@@ -4,10 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { createHomeMonitor } from '../../src/services/homeMonitor.js'
-import { openMonitorStore } from '../../src/services/monitorStore.js'
-import { createPowerMonitor } from '../../src/services/powerMonitor.js'
-import { createPowerNotifications } from '../../src/services/powerNotifications.js'
+import {
+  createHomeMonitor,
+  openMonitorStore,
+  createPowerMonitor,
+  createPowerNotifications,
+  monitorMessages,
+} from '../../src/services/index.js'
 
 test('committed rounds coalesce and deliveries retry independently without replay', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-round-'))
@@ -29,6 +32,7 @@ test('committed rounds coalesce and deliveries retry independently without repla
         locale: 'en',
       })),
     isDeliveryAllowed: () => true,
+    getLocale: () => 'en',
   }
   const coordinator = createHomeMonitor({
     monitor: {
@@ -58,7 +62,8 @@ test('committed rounds coalesce and deliveries retry independently without repla
     store,
     access,
     homes,
-    translate: () => key => key,
+    renderAlert: (delivery, home) =>
+      monitorMessages.renderPowerAlert(delivery, home, key => key),
     send: async chatId => {
       if (chatId === '1' && fail) {
         throw new Error('temporary')

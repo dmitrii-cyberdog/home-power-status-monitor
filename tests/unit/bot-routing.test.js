@@ -5,8 +5,8 @@ import { I18n } from '@grammyjs/i18n'
 import { Bot } from 'grammy'
 
 import routes from '../../src/api/bot/index.js'
-import config from '../../src/config/config.js'
-import updatesHandler from '../../src/middlewares/bot/updatesHandler.js'
+import config from '../../src/config/index.js'
+import { updatesHandler } from '../../src/middlewares/bot/index.js'
 
 const handleMessage = async (text, entities = [], languageCode = 'en') => {
   const bot = new Bot('1:test')

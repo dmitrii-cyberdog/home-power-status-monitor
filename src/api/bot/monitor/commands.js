@@ -1,19 +1,15 @@
 import { Composer, InlineKeyboard } from 'grammy'
 
-import {
-  accessDeniedKey,
-  createAccessHandler,
-} from '../../middlewares/bot/accessHandler'
+import { supportedLocales } from '../../../config'
+
+import { accessDeniedKey, createAccessHandler } from '../../../middlewares/bot'
 
 import {
   createTelegramSendGuard,
   isTelegramSendSkipped,
-} from '../../services/telegramApiQueue'
-
-import {
-  renderFullStatusMessages,
-  renderStatusMessages,
-} from './monitorMessages'
+  getI18n,
+  monitorMessages,
+} from '../../../services'
 
 const notificationCommands = ['on_notification', 'off_notification']
 const monitorCommands = ['status', 'status_full', ...notificationCommands]
@@ -45,8 +41,11 @@ const notificationReply = ctx => {
     return undefined
   }
 
-  return notificationCommands.find(
-    command => prompt.text === ctx.t(`subscription_prompt_${command}`),
+  return notificationCommands.find(command =>
+    supportedLocales.some(
+      locale =>
+        prompt.text === getI18n().t(locale, `subscription_prompt_${command}`),
+    ),
   )
 }
 
@@ -139,14 +138,12 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       return
     }
 
-    const locale = (await ctx.i18n?.getLocale()) ?? 'en'
-
     const enabled = target === 'on'
 
     let result
 
     try {
-      result = await access.setSubscription(chatId, homeId, enabled, locale)
+      result = await access.setSubscription(chatId, homeId, enabled)
     } catch (error) {
       await ctx.answerCallbackQuery()
 
@@ -229,8 +226,8 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
 
       const render =
         command === 'status_full'
-          ? renderFullStatusMessages
-          : renderStatusMessages
+          ? monitorMessages.renderFullStatusMessages
+          : monitorMessages.renderStatusMessages
 
       const messages = render(
         argument
@@ -280,13 +277,10 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       return
     }
 
-    const locale = (await ctx.i18n?.getLocale()) ?? 'en'
-
     const result = await access.setSubscription(
       String(ctx.chat.id),
       home.id,
       command === 'on_notification',
-      locale,
     )
 
     await ctx.reply(ctx.t(`subscription_${result}`))

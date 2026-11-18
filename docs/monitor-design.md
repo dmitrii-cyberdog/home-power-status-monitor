@@ -122,6 +122,13 @@ messages are ignored. Authorization belongs to the whole chat: all members can
 query and manage that chat's preferences. A migrated group ID needs its own
 grant. Generic start/help remain public and reveal no home information.
 
+Use `/en` or `/ru` to save the language for the whole chat. Language selection
+works before authorization and survives restarts. The bot uses the Telegram
+account language for replies before a chat has a saved language. First-time
+group approval uses the service default when the group has no saved language.
+The alert dispatcher reads the recipient's current language before sending the
+first chunk, including on delivery retries.
+
 Existing group grants survive routine restarts. If the secret has appeared in a
 group, rotate it after rollout and deliberately reapprove trusted groups and
 private chats; rotation invalidates all old grants by design.

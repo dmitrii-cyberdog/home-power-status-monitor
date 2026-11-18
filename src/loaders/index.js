@@ -1,10 +1,12 @@
 import config from '../config'
 
-import { Logger } from '../services/logger'
-import { createMonitorRuntime } from '../services/monitorRuntime'
+import { Logger, createMonitorRuntime } from '../services'
 
 import botLoader from './bot'
 import cronLoader from './cron'
+
+export { drainBotRunner } from './bot'
+export { default as loadCron } from './cron'
 
 //
 //

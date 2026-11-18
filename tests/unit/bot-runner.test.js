@@ -6,7 +6,7 @@ const sourceDirectory = fileURLToPath(new URL('../../src/', import.meta.url))
 
 process.chdir(sourceDirectory)
 
-const { drainBotRunner } = await import('../../src/loaders/bot.js')
+const { drainBotRunner } = await import('../../src/loaders/index.js')
 
 test('bot shutdown waits until every accepted update has finished', async () => {
   let checks = 0

@@ -1,4 +1,4 @@
-import { createEzvizClient } from './ezviz'
+import { createEzvizClient } from '../ezviz'
 
 const diagnosticCodes = new Set([
   'transport_error',

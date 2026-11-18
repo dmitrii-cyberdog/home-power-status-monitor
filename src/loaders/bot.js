@@ -4,13 +4,13 @@ import { Bot } from 'grammy'
 import config from '../config'
 
 import {
+  createPendingUpdatesHandler,
   errorHandler,
   loggerHandler,
-  pendingUpdatesHandler,
   updatesHandler,
 } from '../middlewares/bot'
 
-import { configureTelegramApi, i18n } from '../services/botApi'
+import { configureTelegramApi, getI18n } from '../services'
 
 import grammyRoutes from '../api/bot'
 
@@ -82,9 +82,9 @@ export default async (signal, monitorRuntime) => {
   //
 
   bot.use(loggerHandler)
-  bot.use(i18n)
+  bot.use(getI18n())
   bot.use(updatesHandler)
-  bot.use(pendingUpdatesHandler)
+  bot.use(createPendingUpdatesHandler(monitorRuntime.access))
   bot.use(sequentialize(ctx => ctx.chatId?.toString()))
   bot.use(
     grammyRoutes({ ...monitorRuntime, admins: config.botSettings.admins }),
@@ -95,6 +95,8 @@ export default async (signal, monitorRuntime) => {
   await bot.api.setMyCommands([
     { command: 'start', description: 'Home Power Status Monitor' },
     { command: 'help', description: 'Service status and help' },
+    { command: 'en', description: 'Set chat language to English' },
+    { command: 'ru', description: 'Выбрать русский язык чата' },
     { command: 'secret', description: 'Authorize this chat' },
     { command: 'status', description: 'Show home status' },
     { command: 'status_full', description: 'Show detailed home status' },

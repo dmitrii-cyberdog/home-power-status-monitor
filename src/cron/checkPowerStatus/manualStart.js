@@ -1,8 +1,11 @@
 import config from '../../config'
 
-import { flushLogger, Logger } from '../../services/logger'
-import { createMonitorRuntime } from '../../services/monitorRuntime'
-import { closeRequestAgents } from '../../services/requestsService'
+import {
+  flushLogger,
+  Logger,
+  createMonitorRuntime,
+  closeRequestAgents,
+} from '../../services'
 
 const log = new Logger({ script: 'manual_checkPowerStatus' })
 let runtime

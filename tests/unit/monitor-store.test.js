@@ -7,12 +7,10 @@ import path from 'node:path'
 import test from 'node:test'
 
 import {
-  createChatRegistry,
-  createHomeRecord,
-  validateChatRegistry,
-  validateHomeRecord,
-} from '../../src/services/monitorRecords.js'
-import { openMonitorStore } from '../../src/services/monitorStore.js'
+  monitorRecords,
+  monitorValidation,
+  openMonitorStore,
+} from '../../src/services/index.js'
 
 test('store owns directory, serializes writes, and publishes only after rename', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-store-'))
@@ -103,13 +101,16 @@ test('disk schema rejects corrupt identifiers, dates, counters, verifier and und
     { privateSecret: 'must-not-persist' },
   ]) {
     assert.throws(() =>
-      validateHomeRecord({ ...createHomeRecord('1'), ...patch }, '1'),
+      monitorValidation.validateHomeRecord(
+        { ...monitorRecords.createHomeRecord('1'), ...patch },
+        '1',
+      ),
     )
   }
 
   assert.throws(() =>
-    validateChatRegistry({
-      ...createChatRegistry(),
+    monitorValidation.validateChatRegistry({
+      ...monitorRecords.createChatRegistry(),
       verifier: { salt: 'short', digest: 'short' },
     }),
   )
@@ -119,7 +120,7 @@ test('chat registry accepts legacy and current grant IDs but rejects malformed o
   const chat = { authorizedGeneration: 'g', locale: 'en', subscriptions: {} }
 
   const registry = chats => ({
-    ...createChatRegistry(),
+    ...monitorRecords.createChatRegistry(),
     generation: 'g',
     chats,
   })
@@ -127,12 +128,16 @@ test('chat registry accepts legacy and current grant IDs but rejects malformed o
   for (const grantId of [undefined, null, 'grant']) {
     const record = grantId === undefined ? chat : { ...chat, grantId }
 
-    assert.doesNotThrow(() => validateChatRegistry(registry({ 7: record })))
+    assert.doesNotThrow(() =>
+      monitorValidation.validateChatRegistry(registry({ 7: record })),
+    )
   }
 
   for (const grantId of ['', 7, {}]) {
     assert.throws(() =>
-      validateChatRegistry(registry({ 7: { ...chat, grantId } })),
+      monitorValidation.validateChatRegistry(
+        registry({ 7: { ...chat, grantId } }),
+      ),
     )
   }
 })

@@ -8,11 +8,14 @@ import { I18n } from '@grammyjs/i18n'
 import { Bot } from 'grammy'
 
 import { createBotRoutes } from '../../src/api/bot/index.js'
-import config from '../../src/config/config.js'
-import { configureTelegramApi } from '../../src/services/botApi.js'
-import { createChatAccess } from '../../src/services/chatAccess.js'
-import { openMonitorStore } from '../../src/services/monitorStore.js'
-import { telegramApiThrottler } from '../../src/services/telegramApiQueue.js'
+import config from '../../src/config/index.js'
+import { createPendingUpdatesHandler } from '../../src/middlewares/bot/index.js'
+import {
+  configureTelegramApi,
+  createChatAccess,
+  openMonitorStore,
+  telegramApiThrottler,
+} from '../../src/services/index.js'
 
 const notificationFixture = async (
   t,
@@ -24,6 +27,7 @@ const notificationFixture = async (
     check,
     hold,
     throttled = false,
+    limitPending = false,
   } = {},
 ) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-command-'))
@@ -80,6 +84,10 @@ const notificationFixture = async (
 
   bot.use(new I18n(config.botSettings.i18nSettings))
 
+  if (limitPending) {
+    bot.use(createPendingUpdatesHandler(access))
+  }
+
   bot.use(
     createBotRoutes({
       access,
@@ -91,7 +99,7 @@ const notificationFixture = async (
     }),
   )
 
-  const send = (text, replyTo) => {
+  const send = (text, replyTo, sender = from) => {
     const id = ++messageId
 
     const entities = text.startsWith('/')
@@ -104,7 +112,7 @@ const notificationFixture = async (
         message_id: id,
         date: 0,
         chat,
-        from,
+        from: sender,
         text,
         entities,
         reply_to_message: replyTo,
@@ -194,7 +202,7 @@ test('only a named private status reply offers a subscription button', async t =
     [{ text: 'Enable notifications', callback_data: 'subscription:on:1' }],
   ])
 
-  await access.setSubscription('7', '1', true, 'en')
+  await access.setSubscription('7', '1', true)
   await send(`/status ${name.trim()}`)
   assert.deepEqual(replies.at(-1).payload.reply_markup.inline_keyboard, [
     [{ text: 'Disable notifications', callback_data: 'subscription:off:1' }],
@@ -472,6 +480,7 @@ test('protected commands gate home reads and group commands require addressing',
   bot.use(
     createBotRoutes({
       access: {
+        getLocale: () => undefined,
         isAuthorized: () => authorized,
         captureGrant: () => (authorized ? {} : null),
         isGrantCurrent: () => authorized,
@@ -543,6 +552,7 @@ test('named status waits for the refresh and renders committed results', async (
   bot.use(
     createBotRoutes({
       access: {
+        getLocale: () => undefined,
         isAuthorized: () => true,
         captureGrant: () => ({}),
         isGrantCurrent: () => true,
@@ -621,6 +631,7 @@ test('full status shares authorization, addressing, refresh and named filtering'
   bot.use(
     createBotRoutes({
       access: {
+        getLocale: () => undefined,
         isAuthorized: () => authorized,
         captureGrant: () => (authorized ? {} : null),
         isGrantCurrent: () => authorized,
@@ -708,6 +719,7 @@ test('secret arguments remain exact and deletion failure does not change authori
   bot.use(
     createBotRoutes({
       access: {
+        getLocale: () => undefined,
         authorize: async (chatId, value) => {
           supplied.push({ chatId, value })
           return 'authorized'
@@ -806,7 +818,7 @@ test('only a configured admin in a private chat can approve a group', async t =>
   assert.equal(replies.at(-1).payload.text, 'Group authorized.')
   assert.equal(access.isAuthorized('-1007'), true)
 
-  await access.setSubscription('-1007', '1', true, 'en')
+  await access.setSubscription('-1007', '1', true)
   await send('/authorize_group -1007')
   assert.equal(access.isSubscribed('-1007', '1'), true)
   assert.doesNotMatch(JSON.stringify(replies), /test-only/)
@@ -822,4 +834,86 @@ test('group approval is refused while protected access is disabled', async t => 
   await send('/authorize_group -1007')
   assert.equal(replies.at(-1).payload.text, 'Protected access is disabled.')
   assert.equal(access.isAuthorized('-1007'), false)
+})
+
+test('language commands persist a chat preference and keep group replies in that language', async t => {
+  const { access, store, chat, replies, send } = await notificationFixture(t)
+
+  const english = {
+    id: 7,
+    is_bot: false,
+    first_name: 'User',
+    language_code: 'en',
+  }
+  const russian = {
+    id: 8,
+    is_bot: false,
+    first_name: 'User',
+    language_code: 'ru',
+  }
+
+  await send('/ru@power_test_bot', undefined, english)
+  assert.equal(replies.length, 1)
+  assert.equal(replies[0].payload.text, 'Язык чата: русский.')
+  assert.equal(store.readChats().chats[String(chat.id)].locale, 'ru')
+  assert.equal(access.isAuthorized(String(chat.id)), false)
+
+  await access.authorizeGroup(String(chat.id), 'en')
+  await send('/status@power_test_bot', undefined, english)
+  assert.match(replies.at(-1).payload.text, /Family Home/)
+  assert.match(replies.at(-1).payload.text, /неизвестно/i)
+  await send('/on_notification@power_test_bot Family Home', undefined, english)
+  assert.equal(access.isSubscribed(String(chat.id), '1'), true)
+  assert.equal(store.readChats().chats[String(chat.id)].locale, 'ru')
+
+  await send('/off_notification@power_test_bot', undefined, english)
+
+  const russianPrompt = replies.at(-1).message
+
+  await send('/en@power_test_bot', undefined, russian)
+  assert.equal(replies.length, 5)
+  assert.equal(replies.at(-1).payload.text, 'Chat language: English.')
+  await send('/status@power_test_bot', undefined, russian)
+  assert.match(replies.at(-1).payload.text, /unknown/i)
+  assert.equal(access.isSubscribed(String(chat.id), '1'), true)
+  await send('Family Home', russianPrompt, russian)
+  assert.equal(replies.at(-1).payload.text, 'Notifications disabled.')
+  assert.equal(access.isSubscribed(String(chat.id), '1'), false)
+})
+
+test('queue-full notices use the receiving chat preference', async t => {
+  const release = Promise.withResolvers()
+
+  const { access, chat, replies, send } = await notificationFixture(t, {
+    limitPending: true,
+    hold: async (method, payload) => {
+      if (method === 'sendMessage' && payload.text.includes('/secret')) {
+        await release.promise
+      }
+    },
+  })
+
+  const english = {
+    id: 7,
+    is_bot: false,
+    first_name: 'User',
+    language_code: 'en',
+  }
+
+  await access.setLocale(chat.id, 'ru')
+
+  const pending = Array.from({ length: 3 }, () =>
+    send('/help@power_test_bot', undefined, english),
+  )
+
+  try {
+    await send('/help@power_test_bot', undefined, english)
+    assert.equal(replies.length, 1)
+    assert.match(replies[0].payload.text, /\p{Script=Cyrillic}/u)
+    assert.doesNotMatch(replies[0].payload.text, /\/secret/)
+  } finally {
+    release.resolve()
+
+    await Promise.all(pending)
+  }
 })

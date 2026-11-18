@@ -8,7 +8,7 @@ process.chdir(sourceDirectory)
 process.env.DEFAULT_LOCALE = 'en'
 
 const { detectTextLanguage, normalizeLanguageCode } =
-  await import('../../src/utils/language.js')
+  await import('../../src/utils/index.js')
 
 test('detectTextLanguage recognizes English and Russian text', () => {
   assert.equal(detectTextLanguage('Is this my menu? 🍉'), 'en')

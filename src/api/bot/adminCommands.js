@@ -1,6 +1,6 @@
 import { Composer } from 'grammy'
 
-import { isChatId } from '../../services/monitorRecords'
+import { monitorValidation } from '../../services'
 
 export const createAdminCommands = ({ access, admins = [] }) => {
   const composer = new Composer()
@@ -18,7 +18,7 @@ export const createAdminCommands = ({ access, admins = [] }) => {
 
     const target = ctx.match.trim()
 
-    if (target !== 'all' && !isChatId(target)) {
+    if (target !== 'all' && !monitorValidation.isChatId(target)) {
       await ctx.reply(ctx.t('admin_clear_usage'))
 
       return
@@ -51,15 +51,13 @@ export const createAdminCommands = ({ access, admins = [] }) => {
 
     const target = ctx.match.trim()
 
-    if (!isChatId(target) || !target.startsWith('-')) {
+    if (!monitorValidation.isChatId(target) || !target.startsWith('-')) {
       await ctx.reply(ctx.t('admin_authorize_group_usage'))
 
       return
     }
 
-    const locale = (await ctx.i18n?.getLocale()) ?? 'en'
-
-    const result = await access.authorizeGroup(target, locale)
+    const result = await access.authorizeGroup(target)
 
     await ctx.reply(
       ctx.t(

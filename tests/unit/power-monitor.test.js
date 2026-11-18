@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createPowerMonitor } from '../../src/services/powerMonitor.js'
+import { createPowerMonitor } from '../../src/services/index.js'
 
 test('offline streaks, unknown reset, identity replacement and coalescing', async () => {
   let status = 'offline'

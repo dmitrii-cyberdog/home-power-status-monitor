@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import config from '../../src/config/config.js'
+import config from '../../src/config/index.js'
 
 test('disabled cron loader creates no scheduled tasks', async () => {
-  const { default: loadCron } = await import('../../src/loaders/cron.js')
+  const { loadCron } = await import('../../src/loaders/index.js')
 
   assert.deepEqual(await loadCron(), [])
 })
@@ -18,7 +18,7 @@ test('enabled cron loader registers checkPowerStatus', async t => {
 
   config.cron.checkPowerStatus.isEnabled = true
 
-  const { default: loadCron } = await import('../../src/loaders/cron.js')
+  const { loadCron } = await import('../../src/loaders/index.js')
   const tasks = await loadCron({ homeMonitor: { check: async () => [] } })
 
   t.after(() => Promise.all(tasks.map(task => task.destroy())))
@@ -29,7 +29,7 @@ test('enabled cron loader registers checkPowerStatus', async t => {
 
 test('checkPowerStatus delegates to the shared coordinator', async t => {
   const { default: schedule } =
-    await import('../../src/cron/checkPowerStatus/cron.js')
+    await import('../../src/cron/checkPowerStatus/index.js')
   const task = schedule({
     check: async (...args) => {
       assert.deepEqual(args, [])
@@ -54,7 +54,7 @@ test('retired power check schedule is ignored', async t => {
   config.cron.checkPowerStatus.startTemplate = 'invalid'
 
   const { default: schedule } =
-    await import('../../src/cron/checkPowerStatus/cron.js')
+    await import('../../src/cron/checkPowerStatus/index.js')
 
   const task = schedule({ check: async () => [] })
 
@@ -63,7 +63,7 @@ test('retired power check schedule is ignored', async t => {
 })
 
 test('cron drain waits for accepted operations', async () => {
-  const { cron } = await import('../../src/services/cron.js')
+  const { cron } = await import('../../src/services/index.js')
   let finish
   let drained = false
   const pending = new Promise(resolve => {

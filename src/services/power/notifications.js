@@ -1,5 +1,4 @@
-import { renderPowerAlert } from '../api/bot/monitorMessages'
-import { isTelegramSendSkipped } from './telegramApiQueue'
+import { isTelegramSendSkipped } from '../telegramApiQueue'
 
 const unavailableChat = error =>
   error?.error_code === 403 &&
@@ -15,7 +14,7 @@ export const createPowerNotifications = ({
   access,
   homes,
   send,
-  translate,
+  renderAlert,
   log,
 }) => {
   let stopped = false
@@ -34,6 +33,53 @@ export const createPowerNotifications = ({
 
       return record
     })
+
+  const sendDelivery = async (home, delivery) => {
+    const { chatId } = delivery
+
+    while (!stopped) {
+      if (!access.isDeliveryAllowed(delivery)) {
+        return true
+      }
+
+      const locale = access.getLocale(chatId)
+
+      let started = false
+
+      let localeChanged = false
+
+      const canDispatch = () => {
+        if (!access.isDeliveryAllowed(delivery)) {
+          return false
+        }
+
+        // Keep all chunks in the same language once the first has been sent.
+        localeChanged = !started && access.getLocale(chatId) !== locale
+
+        return !localeChanged
+      }
+
+      try {
+        for (const text of renderAlert(delivery, home, locale)) {
+          if (stopped || !access.isDeliveryAllowed(delivery)) {
+            return false
+          }
+
+          await send(chatId, text, canDispatch)
+
+          started = true
+        }
+
+        return true
+      } catch (error) {
+        if (!localeChanged || !isTelegramSendSkipped(error)) {
+          throw error
+        }
+      }
+    }
+
+    return false
+  }
 
   const pass = async () => {
     const pairs = []
@@ -69,29 +115,7 @@ export const createPowerNotifications = ({
           }
 
           try {
-            if (!access.isDeliveryAllowed(delivery)) {
-              await remove(home.id, delivery)
-              continue
-            }
-
-            let complete = true
-
-            for (const text of renderPowerAlert(
-              delivery,
-              home,
-              translate(delivery.locale),
-            )) {
-              if (stopped || !access.isDeliveryAllowed(delivery)) {
-                complete = false
-                break
-              }
-
-              await send(delivery.chatId, text, () =>
-                access.isDeliveryAllowed(delivery),
-              )
-            }
-
-            if (!complete) {
+            if (!(await sendDelivery(home, delivery))) {
               break
             }
 

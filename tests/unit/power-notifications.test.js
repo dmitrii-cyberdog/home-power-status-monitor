@@ -6,12 +6,15 @@ import test from 'node:test'
 
 import { Api } from 'grammy'
 
-import { configureTelegramApi } from '../../src/services/botApi.js'
-import { createChatAccess } from '../../src/services/chatAccess.js'
-import { createMonitorRuntime } from '../../src/services/monitorRuntime.js'
-import { openMonitorStore } from '../../src/services/monitorStore.js'
-import { createPowerNotifications } from '../../src/services/powerNotifications.js'
-import { telegramApiThrottler } from '../../src/services/telegramApiQueue.js'
+import {
+  configureTelegramApi,
+  createChatAccess,
+  createMonitorRuntime,
+  openMonitorStore,
+  createPowerNotifications,
+  monitorMessages,
+  telegramApiThrottler,
+} from '../../src/services/index.js'
 
 const fixture = async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-alert-'))
@@ -45,6 +48,66 @@ const fixture = async t => {
   return store
 }
 
+test('pending outage and restoration alerts use each chat preference on retry', async t => {
+  const store = await fixture(t)
+  const homes = [{ id: '1', name: 'Home' }]
+  const access = createChatAccess({ store, secret: 'secret', homes })
+  const sent = []
+
+  await access.initialize()
+
+  for (const chatId of ['1', '2']) {
+    await access.authorize(chatId, 'secret', 'en')
+    await access.setSubscription(chatId, '1', true)
+  }
+
+  const recipients = access.recipients('1', store.readChats())
+
+  await store.updateHome('1', record => {
+    record.pendingDeliveries = record.pendingDeliveries.map(delivery => ({
+      ...delivery,
+      ...recipients.find(recipient => recipient.chatId === delivery.chatId),
+    }))
+
+    return record
+  })
+
+  let fail = true
+
+  const dispatcher = createPowerNotifications({
+    store,
+    homes,
+    access,
+    renderAlert: (delivery, home, locale) =>
+      monitorMessages.renderPowerAlert(
+        delivery,
+        home,
+        key => `${locale}:${key}`,
+      ),
+    send: async (chatId, body) => {
+      if (fail) {
+        throw new Error('Temporary network failure')
+      }
+
+      sent.push([chatId, body.split('\n')[0]])
+    },
+  })
+
+  await dispatcher.flush()
+  assert.equal(store.readHome('1').pendingDeliveries.length, 4)
+
+  await access.setLocale('1', 'ru')
+  fail = false
+  await dispatcher.flush()
+  assert.deepEqual(sent.sort(), [
+    ['1', 'Home: ru:monitor_outage'],
+    ['1', 'Home: ru:monitor_restored'],
+    ['2', 'Home: en:monitor_outage'],
+    ['2', 'Home: en:monitor_restored'],
+  ])
+  assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+})
+
 test('cleared chat deliveries are discarded even after reauthorization and resubscription', async t => {
   const store = await fixture(t)
   const homes = [{ id: '1', name: 'Home' }]
@@ -53,7 +116,7 @@ test('cleared chat deliveries are discarded even after reauthorization and resub
 
   await access.initialize()
   await access.authorize('1', 'secret', 'en')
-  await access.setSubscription('1', '1', true, 'en')
+  await access.setSubscription('1', '1', true)
 
   const [recipient] = access.recipients('1', store.readChats())
 
@@ -66,13 +129,14 @@ test('cleared chat deliveries are discarded even after reauthorization and resub
   })
   await access.clearChats('1')
   await access.authorize('1', 'secret', 'en')
-  await access.setSubscription('1', '1', true, 'en')
+  await access.setSubscription('1', '1', true)
 
   const dispatcher = createPowerNotifications({
     store,
     homes,
     access,
-    translate: () => key => key,
+    renderAlert: (delivery, home) =>
+      monitorMessages.renderPowerAlert(delivery, home, key => key),
     send: async chatId => sent.push(chatId),
   })
 
@@ -89,7 +153,7 @@ test('a delayed delivery refusal cannot disable a subscription created after a c
 
   await access.initialize()
   await access.authorize('1', 'secret', 'en')
-  await access.setSubscription('1', '1', true, 'en')
+  await access.setSubscription('1', '1', true)
 
   const [recipient] = access.recipients('1', store.readChats())
 
@@ -108,7 +172,8 @@ test('a delayed delivery refusal cannot disable a subscription created after a c
     store,
     homes,
     access,
-    translate: () => key => key,
+    renderAlert: (delivery, home) =>
+      monitorMessages.renderPowerAlert(delivery, home, key => key),
     send: () => {
       started.resolve()
 
@@ -121,7 +186,7 @@ test('a delayed delivery refusal cannot disable a subscription created after a c
   await started.promise
   await access.clearChats('1')
   await access.authorize('1', 'secret', 'en')
-  await access.setSubscription('1', '1', true, 'en')
+  await access.setSubscription('1', '1', true)
   result.reject({
     error_code: 403,
     description: 'Forbidden: bot was blocked by the user',
@@ -136,8 +201,12 @@ test('failed earlier events block only their home/chat; revoked entries are remo
   const dispatcher = createPowerNotifications({
     store,
     homes: [{ id: '1', name: 'Home' }],
-    access: { isDeliveryAllowed: delivery => delivery.chatId === '1' },
-    translate: () => key => key,
+    access: {
+      isDeliveryAllowed: delivery => delivery.chatId === '1',
+      getLocale: () => 'en',
+    },
+    renderAlert: (delivery, home) =>
+      monitorMessages.renderPowerAlert(delivery, home, key => key),
     send: async (chatId, text) => {
       sent.push(text)
       throw new Error(chatId)
@@ -163,8 +232,12 @@ test('stop drains the acknowledgement of a send already accepted', async t => {
   const dispatcher = createPowerNotifications({
     store,
     homes: [{ id: '1', name: 'Home' }],
-    access: { isDeliveryAllowed: delivery => delivery.chatId === '1' },
-    translate: () => key => key,
+    access: {
+      isDeliveryAllowed: delivery => delivery.chatId === '1',
+      getLocale: () => 'en',
+    },
+    renderAlert: (delivery, home) =>
+      monitorMessages.renderPowerAlert(delivery, home, key => key),
     send: () => {
       started()
       return new Promise(resolve => {
@@ -208,11 +281,13 @@ test('a failed subscription write cannot let drain abandon other accepted sends'
     homes: [{ id: '1', name: 'Home' }],
     access: {
       isDeliveryAllowed: () => true,
+      getLocale: () => 'en',
       disableSubscriptions: async () => {
         throw new Error('disk')
       },
     },
-    translate: () => key => key,
+    renderAlert: (delivery, home) =>
+      monitorMessages.renderPowerAlert(delivery, home, key => key),
     send: async chatId => {
       if (chatId === '1') {
         throw {
@@ -282,7 +357,7 @@ const runtimeFixture = async t => {
   const { access } = runtime
 
   await access.authorize('7', 'secret', 'en')
-  await access.setSubscription('7', '1', true, 'en')
+  await access.setSubscription('7', '1', true)
 
   const [recipient] = access.recipients('1', store.readChats())
 
@@ -344,14 +419,14 @@ for (const [name, revoke] of [
     async access => {
       await access.clearChats('7')
       await access.authorize('7', 'secret', 'en')
-      await access.setSubscription('7', '1', true, 'en')
+      await access.setSubscription('7', '1', true)
     },
   ],
   [
     'an unsubscribe followed by a new subscription',
     async access => {
-      await access.setSubscription('7', '1', false, 'en')
-      await access.setSubscription('7', '1', true, 'en')
+      await access.setSubscription('7', '1', false)
+      await access.setSubscription('7', '1', true)
     },
   ],
 ]) {
@@ -385,6 +460,29 @@ test('an eligible alert is still delivered through the guarded queue', async t =
   assert.equal(sent[0].method, 'sendMessage')
   assert.deepEqual(Object.keys(sent[0].payload).sort(), ['chat_id', 'text'])
   assert.equal(sent[0].payload.chat_id, '7')
+  assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+  assert.deepEqual(errors, [])
+})
+
+test('an alert waiting in the Telegram queue uses a newly selected chat language', async t => {
+  const { access, errors, runtime, sent, store } = await runtimeFixture(t)
+  const release = blockQueue()
+
+  runtime.startNotifications()
+  await new Promise(resolve => {
+    setImmediate(resolve)
+  })
+
+  try {
+    await access.setLocale('7', 'ru')
+  } finally {
+    await release()
+  }
+
+  await runtime.drainNotifications()
+
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].payload.text, /\p{Script=Cyrillic}/u)
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
   assert.deepEqual(errors, [])
 })

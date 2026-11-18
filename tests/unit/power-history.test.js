@@ -1,14 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createHomeRecord } from '../../src/services/monitorRecords.js'
-import {
-  projectHomeStatus,
-  reduceHomeObservation,
-} from '../../src/services/powerHistory.js'
+import { monitorRecords, powerHistory } from '../../src/services/index.js'
 
 test('history accounts sampled durations and uncertain transitions once', () => {
-  let record = createHomeRecord('1')
+  let record = monitorRecords.createHomeRecord('1')
   const options = {
     runId: 'run',
     intervalSeconds: 60,
@@ -25,7 +21,7 @@ test('history accounts sampled durations and uncertain transitions once', () => 
     'unknown',
     'on',
   ].entries()) {
-    record = reduceHomeObservation(
+    record = powerHistory.reduceHomeObservation(
       record,
       { status, observedAt: new Date(index * 60000).toISOString() },
       options,
@@ -41,7 +37,7 @@ test('history accounts sampled durations and uncertain transitions once', () => 
   assert.equal(record.eventSequence, 2)
   assert.equal(record.pendingDeliveries.length, 2)
   assert.equal(
-    projectHomeStatus(record, {
+    powerHistory.projectHomeStatus(record, {
       home: { id: '1', name: 'Home' },
       runId: 'restart',
       now: 300000,
@@ -49,7 +45,7 @@ test('history accounts sampled durations and uncertain transitions once', () => 
     }).status,
     'unknown',
   )
-  const restart = reduceHomeObservation(
+  const restart = powerHistory.reduceHomeObservation(
     record,
     { status: 'on', observedAt: new Date(360000).toISOString() },
     { ...options, runId: 'restart' },
@@ -61,7 +57,7 @@ test('history accounts sampled durations and uncertain transitions once', () => 
 })
 
 test('clock rollback uses an accounting high-water mark and queue saturation is bounded', () => {
-  let record = createHomeRecord('1')
+  let record = monitorRecords.createHomeRecord('1')
   const options = {
     runId: 'r',
     intervalSeconds: 60,
@@ -79,7 +75,7 @@ test('clock rollback uses an accounting high-water mark and queue saturation is 
     [30, 'off'],
     [90, 'off'],
   ]) {
-    record = reduceHomeObservation(
+    record = powerHistory.reduceHomeObservation(
       record,
       { status, observedAt: new Date(seconds * 1000).toISOString() },
       options,
@@ -94,7 +90,7 @@ test('clock rollback uses an accounting high-water mark and queue saturation is 
   assert.equal(record.pendingDeliveries.length, 1000)
   assert.equal(record.droppedAlerts, 1)
   assert.equal(record.continuous, false)
-  const projection = projectHomeStatus(record, {
+  const projection = powerHistory.projectHomeStatus(record, {
     home: { id: '1', name: 'Home' },
     runId: 'r',
     now: 300000,
@@ -115,7 +111,7 @@ test('a new episode restores continuity after a gap but labels its event uncerta
       { chatId: '1', generation: 'g', subscriptionId: 's', locale: 'en' },
     ],
   }
-  let record = createHomeRecord('1')
+  let record = monitorRecords.createHomeRecord('1')
 
   for (const [seconds, status] of [
     [0, 'on'],
@@ -123,7 +119,7 @@ test('a new episode restores continuity after a gap but labels its event uncerta
     [120, 'on'],
     [180, 'off'],
   ]) {
-    record = reduceHomeObservation(
+    record = powerHistory.reduceHomeObservation(
       record,
       { status, observedAt: new Date(seconds * 1000).toISOString() },
       options,

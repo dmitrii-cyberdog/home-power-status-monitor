@@ -2,12 +2,8 @@ import { randomUUID } from 'node:crypto'
 import filesystem from 'node:fs/promises'
 import path from 'node:path'
 
-import {
-  createChatRegistry,
-  createHomeRecord,
-  validateChatRegistry,
-  validateHomeRecord,
-} from './monitorRecords'
+import { createChatRegistry, createHomeRecord } from './records'
+import { validateChatRegistry, validateHomeRecord } from './validation'
 
 export const openMonitorStore = async ({
   directory,

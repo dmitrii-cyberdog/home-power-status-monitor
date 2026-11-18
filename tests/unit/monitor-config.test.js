@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { parseMonitorConfig } from '../../src/config/monitor.js'
+import { parseMonitorConfig } from '../../src/config/index.js'
 
 const environment = {
   HOME_2_NAME: ' Family Home ',

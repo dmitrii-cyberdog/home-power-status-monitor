@@ -4,8 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { createChatAccess } from '../../src/services/chatAccess.js'
-import { openMonitorStore } from '../../src/services/monitorStore.js'
+import { createChatAccess, openMonitorStore } from '../../src/services/index.js'
 
 test('grants survive restart; rotation and subscription identities prevent replay', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-access-'))
@@ -26,18 +25,18 @@ test('grants survive restart; rotation and subscription identities prevent repla
     await access.authorize('-1007', ' exact secret ', 'ru'),
     'authorized',
   )
-  await access.setSubscription('-1007', '1', true, 'ru')
+  await access.setSubscription('-1007', '1', true)
   const recipient = access.recipients('1', store.readChats())[0]
   const delivery = { ...recipient, eventId: '1:1' }
 
   assert.equal(access.isDeliveryAllowed(delivery), true)
-  await access.setSubscription('-1007', '1', true, 'ru')
+  await access.setSubscription('-1007', '1', true)
   assert.deepEqual(access.recipients('1', store.readChats())[0], recipient)
   access = make(' exact secret ')
   await access.initialize()
   assert.equal(access.isAuthorized('-1007'), true)
-  await access.setSubscription('-1007', '1', false, 'ru')
-  await access.setSubscription('-1007', '1', true, 'ru')
+  await access.setSubscription('-1007', '1', false)
+  await access.setSubscription('-1007', '1', true)
   assert.equal(access.isDeliveryAllowed(delivery), false)
   access = make('new')
   await access.initialize()
@@ -101,7 +100,7 @@ test('chat clears persist and revoke subscriptions without touching home records
   await access.initialize()
   await access.authorize('-1007', 'secret', 'en')
   await access.authorize('8', 'secret', 'ru')
-  await access.setSubscription('-1007', '1', true, 'en')
+  await access.setSubscription('-1007', '1', true)
 
   const previous = store.readChats()
 
@@ -114,7 +113,7 @@ test('chat clears persist and revoke subscriptions without touching home records
   const clear = access.clearChats('-1007')
 
   const denied = assert.rejects(
-    access.setSubscription('-1007', '1', true, 'en'),
+    access.setSubscription('-1007', '1', true),
     /Access denied/,
   )
 
@@ -157,7 +156,7 @@ test('group approval shares the grant write, keeps subscriptions and honors disa
   assert.equal(access.isAuthorized('-1007'), true)
   assert.equal(store.readChats().chats['-1007'].locale, 'ru')
 
-  await access.setSubscription('-1007', '1', true, 'ru')
+  await access.setSubscription('-1007', '1', true)
 
   const subscription = store.readChats().chats['-1007'].subscriptions['1']
 
@@ -166,7 +165,7 @@ test('group approval shares the grant write, keeps subscriptions and honors disa
     store.readChats().chats['-1007'].subscriptions['1'],
     subscription,
   )
-  assert.equal(store.readChats().chats['-1007'].locale, 'en')
+  assert.equal(store.readChats().chats['-1007'].locale, 'ru')
   assert.equal(access.isSubscribed('-1007', '1'), true)
 
   const disabled = createChatAccess({ store, secret: '', homes: [] })
@@ -194,7 +193,7 @@ test('grant IDs separate a cleared grant from a later approval and legacy regist
   await access.initialize()
   await access.authorize('7', 'secret', 'ru')
   await access.authorizeGroup('-1007', 'en')
-  await access.setSubscription('7', '1', true, 'ru')
+  await access.setSubscription('7', '1', true)
   await store.close()
 
   //
@@ -275,4 +274,32 @@ test('grant IDs separate a cleared grant from a later approval and legacy regist
   await access.initialize()
   assert.equal(access.isGrantCurrent('7', current), false)
   assert.equal(store.readChats().chats['7'].grantId, null)
+})
+
+test('chat language selections survive a storage restart without creating a grant', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-locale-'))
+
+  let store = await openMonitorStore({ directory, homeIds: [] })
+
+  t.after(async () => {
+    await store.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  let access = createChatAccess({ store, homes: [] })
+
+  await access.initialize()
+  await access.setLocale('7', 'ru')
+  await access.setLocale('8', 'en')
+  await store.close()
+
+  store = await openMonitorStore({ directory, homeIds: [] })
+  access = createChatAccess({ store, homes: [] })
+
+  await access.initialize()
+
+  assert.equal(access.getLocale('7'), 'ru')
+  assert.equal(access.getLocale('8'), 'en')
+  assert.equal(access.isAuthorized('7'), false)
+  assert.equal(access.getLocale('9'), undefined)
 })

@@ -4,8 +4,8 @@ import test from 'node:test'
 
 import { I18n } from '@grammyjs/i18n'
 
-import * as messages from '../../src/api/bot/monitorMessages.js'
-import config from '../../src/config/config.js'
+import config from '../../src/config/index.js'
+import { monitorMessages as messages } from '../../src/services/index.js'
 
 const { renderStatusMessages } = messages
 

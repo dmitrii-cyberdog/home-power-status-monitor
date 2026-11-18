@@ -1,12 +1,14 @@
 import config from './config'
 
-import { cron as cronService } from './services/cron'
-import { Logger, flushLogger } from './services/logger'
-import { closeRequestAgents } from './services/requestsService'
-import { drainTelegramApiQueue } from './services/telegramApiQueue'
+import {
+  cron as cronService,
+  Logger,
+  flushLogger,
+  closeRequestAgents,
+  drainTelegramApiQueue,
+} from './services'
 
-import loader from './loaders'
-import { drainBotRunner } from './loaders/bot'
+import loader, { drainBotRunner } from './loaders'
 
 //
 

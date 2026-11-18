@@ -3,8 +3,7 @@ import { once } from 'node:events'
 import http from 'node:http'
 import test from 'node:test'
 
-import Logger from '../../src/services/logger.js'
-import { Request } from '../../src/services/requestsService/index.js'
+import { logger as Logger, Request } from '../../src/services/index.js'
 
 const serve = async (t, handler) => {
   const server = http.createServer(handler).listen(0, '127.0.0.1')

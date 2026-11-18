@@ -1,6 +1,6 @@
 import config from '../config'
 
-import checkPowerStatus from '../cron/checkPowerStatus/cron'
+import checkPowerStatus from '../cron/checkPowerStatus'
 
 export default async monitorRuntime => {
   const tasks = []

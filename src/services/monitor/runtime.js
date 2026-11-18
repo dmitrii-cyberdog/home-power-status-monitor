@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
 
-import { i18n } from './botApi'
-import { createChatAccess } from './chatAccess'
-import { createHomeMonitor } from './homeMonitor'
-import { openMonitorStore } from './monitorStore'
-import { createPowerMonitor } from './powerMonitor'
-import { createPowerNotifications } from './powerNotifications'
-import { createTelegramSendGuard } from './telegramApiQueue'
+import { getI18n } from '../botApi'
+import { createChatAccess } from '../chatAccess'
+import { createHomeMonitor } from '../homeMonitor'
+import { createPowerMonitor, createPowerNotifications } from '../power'
+import { createTelegramSendGuard } from '../telegramApiQueue'
+import { renderPowerAlert } from './messages'
+import { openMonitorStore } from './store'
 
 export const createMonitorRuntime = async ({
   config,
@@ -77,8 +77,10 @@ export const createMonitorRuntime = async ({
               undefined,
               createTelegramSendGuard(isAllowed),
             ),
-          translate: locale => (key, variables) =>
-            i18n.t(locale, key, variables),
+          renderAlert: (delivery, home, locale) =>
+            renderPowerAlert(delivery, home, (key, variables) =>
+              getI18n().t(locale, key, variables),
+            ),
         })
       },
       startNotifications() {

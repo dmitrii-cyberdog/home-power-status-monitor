@@ -48,10 +48,10 @@ export const getRandomInt = (min, max) => {
   return Math.floor(Math.random() * (maxInt - minInt + 1)) + minInt
 }
 
+export const escapeHtmlText = text =>
+  text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+
 export const escapeHtml = value =>
-  String(value ?? '-')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
+  escapeHtmlText(String(value ?? '-'))
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;')

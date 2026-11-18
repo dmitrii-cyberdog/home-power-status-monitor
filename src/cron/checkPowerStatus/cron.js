@@ -1,7 +1,6 @@
 import config from '../../config'
 
-import { cron as cronService } from '../../services/cron'
-import { Logger } from '../../services/logger'
+import { cron as cronService, Logger } from '../../services'
 
 import fn from './fn'
 

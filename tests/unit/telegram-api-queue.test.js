@@ -3,14 +3,13 @@ import test from 'node:test'
 
 import { Api } from 'grammy'
 
-const { configureTelegramApi } = await import('../../src/services/botApi.js')
-
 const {
+  configureTelegramApi,
   createTelegramSendGuard,
   drainTelegramApiQueue,
   isTelegramSendSkipped,
   telegramApiThrottler,
-} = await import('../../src/services/telegramApiQueue.js')
+} = await import('../../src/services/index.js')
 
 const createLegacyAbortController = () => {
   const events = new EventTarget()

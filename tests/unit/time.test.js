@@ -6,7 +6,7 @@ import {
   getDayJsWithUtcOffset,
   getTodayDatesWithOffset,
   parseTimeOffsetMinutes,
-} from '../../src/utils/time.js'
+} from '../../src/utils/index.js'
 
 test('formatTimeOffsetMinutes returns a readable UTC offset', () => {
   assert.equal(formatTimeOffsetMinutes(0), 'UTC+0')

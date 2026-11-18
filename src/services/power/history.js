@@ -35,7 +35,11 @@ export const reduceHomeObservation = (
 
   next.trackingSince ??= observedAt
   next.accountedAt = new Date(Math.max(time, highWater)).toISOString()
-  next.sample = { status, observedAt, runId }
+  next.sample = {
+    status, // Inferred electricity state, including unknown.
+    observedAt, // UTC observation time used for freshness and accounting.
+    runId, // Worker run that recorded the observation.
+  }
 
   if (previous && !supported) {
     next.continuous = false
@@ -56,8 +60,8 @@ export const reduceHomeObservation = (
         previous.status !== 'unknown' &&
         record.continuous
       next[status === 'on' ? 'lastOn' : 'lastOff'] = {
-        detectedAt: observedAt,
-        baseline,
+        detectedAt: observedAt, // UTC time the episode was first observed.
+        baseline, // True when no earlier decisive observation exists.
       }
 
       if (status === 'off') {
@@ -74,13 +78,13 @@ export const reduceHomeObservation = (
           }
 
           next.pendingDeliveries.push({
-            eventId: `${record.id}:${next.eventSequence}`,
-            sequence: next.eventSequence,
-            state: status,
-            detectedAt: observedAt,
-            baseline,
-            uncertain: !next.continuous,
-            ...recipient,
+            eventId: `${record.id}:${next.eventSequence}`, // Home ID and sequence, shared by recipients.
+            sequence: next.eventSequence, // Sorts deliveries for one home and chat.
+            state: status, // Off for an outage or on for a restoration.
+            detectedAt: observedAt, // UTC time the event was detected.
+            baseline, // True for an outage on the first decisive observation.
+            uncertain: !next.continuous, // Whether sampling could establish continuity at detection.
+            ...recipient, // Chat ID, access generation, subscription ID and legacy locale snapshot.
           })
         }
       }

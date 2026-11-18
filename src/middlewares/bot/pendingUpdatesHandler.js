@@ -1,3 +1,5 @@
+import { createChatLocaleHandler } from './chatLocaleHandler'
+
 const MAX_PENDING_UPDATES_PER_SENDER = 3
 
 const pendingBySender = new Map()
@@ -27,42 +29,46 @@ const notifyBusy = async ctx => {
 //
 //
 
-export default async (ctx, next) => {
-  const senderId = ctx.chatId ?? ctx.from?.id
+export const createPendingUpdatesHandler = access => {
+  const localize = createChatLocaleHandler(access)
 
-  if (senderId == null) {
-    return await next()
-  }
+  return async (ctx, next) => {
+    const senderId = ctx.chatId ?? ctx.from?.id
 
-  const key = String(senderId)
-  const pending = pendingBySender.get(key) || 0
-
-  if (pending >= MAX_PENDING_UPDATES_PER_SENDER) {
-    ctx.log?.warning('bot_sender_queue_full', {
-      senderId: key,
-      updateId: ctx.update?.update_id,
-    })
-
-    if (!busyNotifiedBySender.has(key)) {
-      busyNotifiedBySender.add(key)
-      await notifyBusy(ctx)
+    if (senderId == null) {
+      return await next()
     }
 
-    return
-  }
+    const key = String(senderId)
+    const pending = pendingBySender.get(key) || 0
 
-  pendingBySender.set(key, pending + 1)
+    if (pending >= MAX_PENDING_UPDATES_PER_SENDER) {
+      ctx.log?.warning('bot_sender_queue_full', {
+        senderId: key,
+        updateId: ctx.update?.update_id,
+      })
 
-  try {
-    return await next()
-  } finally {
-    const remaining = (pendingBySender.get(key) || 1) - 1
+      if (!busyNotifiedBySender.has(key)) {
+        busyNotifiedBySender.add(key)
+        await localize(ctx, () => notifyBusy(ctx))
+      }
 
-    if (remaining === 0) {
-      pendingBySender.delete(key)
-      busyNotifiedBySender.delete(key)
-    } else {
-      pendingBySender.set(key, remaining)
+      return
+    }
+
+    pendingBySender.set(key, pending + 1)
+
+    try {
+      return await next()
+    } finally {
+      const remaining = (pendingBySender.get(key) || 1) - 1
+
+      if (remaining === 0) {
+        pendingBySender.delete(key)
+        busyNotifiedBySender.delete(key)
+      } else {
+        pendingBySender.set(key, remaining)
+      }
     }
   }
 }

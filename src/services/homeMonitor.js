@@ -1,4 +1,4 @@
-import { projectHomeStatus, reduceHomeObservation } from './powerHistory'
+import { powerHistory } from './power'
 
 export const createHomeMonitor = ({
   monitor,
@@ -21,7 +21,7 @@ export const createHomeMonitor = ({
 
   const getStatuses = () =>
     homes.map(home => ({
-      ...projectHomeStatus(store.readHome(home.id), {
+      ...powerHistory.projectHomeStatus(store.readHome(home.id), {
         home,
         runId,
         intervalSeconds,
@@ -63,11 +63,15 @@ export const createHomeMonitor = ({
         const results = await Promise.allSettled(
           observations.homes.map(async observation => {
             await store.updateHome(observation.id, (record, registry) => {
-              const next = reduceHomeObservation(record, observation, {
-                runId,
-                intervalSeconds,
-                recipients: access.recipients(observation.id, registry),
-              })
+              const next = powerHistory.reduceHomeObservation(
+                record,
+                observation,
+                {
+                  runId,
+                  intervalSeconds,
+                  recipients: access.recipients(observation.id, registry),
+                },
+              )
 
               if (next.droppedAlerts > record.droppedAlerts) {
                 log?.error('Pending alert capacity exceeded', {

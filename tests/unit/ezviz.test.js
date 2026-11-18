@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createEzvizClient } from '../../src/services/ezviz.js'
+import { createEzvizClient } from '../../src/services/index.js'
 
 test('EZVIZ caches tokens, matches exact names and refuses partial lists', async () => {
   const calls = []

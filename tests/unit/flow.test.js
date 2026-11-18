@@ -7,7 +7,7 @@ const sourceDirectory = fileURLToPath(new URL('../../src/', import.meta.url))
 process.chdir(sourceDirectory)
 
 const { clearFlow, getFlow, hasFlow, startFlow, touchFlow } =
-  await import('../../src/utils/flow.js')
+  await import('../../src/utils/index.js')
 
 const createContext = (flow = null) => ({ session: { flow } })
 

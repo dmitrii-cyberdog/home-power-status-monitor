@@ -35,10 +35,8 @@ const modules = {
   './config': {
     default: { envName: 'shutdown-test', isDebug: false },
   },
-  './services/cron': {
+  './services': {
     cron: { drain: () => step('cron') },
-  },
-  './services/logger': {
     Logger: Object.fromEntries(
       ['notice', 'warning', 'error', 'critical'].map(level => [
         level,
@@ -46,8 +44,6 @@ const modules = {
       ]),
     ),
     flushLogger: () => step('logger'),
-  },
-  './services/requestsService': {
     closeRequestAgents: () => {
       record('agents:close')
 
@@ -55,8 +51,6 @@ const modules = {
         throw new Error('Agent cleanup failed')
       }
     },
-  },
-  './services/telegramApiQueue': {
     drainTelegramApiQueue: () => step('telegram'),
   },
   './loaders': {
@@ -128,8 +122,6 @@ const modules = {
       runtime.botRunner = {}
       runtime.cronTasks = [cronTask]
     },
-  },
-  './loaders/bot': {
     drainBotRunner: async (_runner, signal) => {
       signal.addEventListener('abort', () => record('bot:abort'))
       await step('bot')

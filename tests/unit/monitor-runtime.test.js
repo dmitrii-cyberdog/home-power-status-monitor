@@ -4,8 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { createPowerStatusTask } from '../../src/cron/checkPowerStatus/cron.js'
-import { createMonitorRuntime } from '../../src/services/monitorRuntime.js'
+import { createPowerStatusTask } from '../../src/cron/checkPowerStatus/index.js'
+import { createMonitorRuntime } from '../../src/services/index.js'
 
 test('runtime initializes storage/access before checks and releases ownership', async t => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-runtime-'))

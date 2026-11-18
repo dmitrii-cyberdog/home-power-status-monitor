@@ -8,7 +8,10 @@ import { telegramApiThrottler } from './telegramApiQueue'
 //
 //
 
-export const i18n = new I18n(config.botSettings.i18nSettings)
+let i18n
+
+export const getI18n = () =>
+  (i18n ??= new I18n(config.botSettings.i18nSettings))
 
 export const configureTelegramApi = api => {
   api.config.use(telegramApiThrottler)

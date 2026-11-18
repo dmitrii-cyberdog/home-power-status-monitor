@@ -1,4 +1,4 @@
-import { openMonitorStore } from '../../src/services/monitorStore.js'
+import { openMonitorStore } from '../../src/services/index.js'
 
 try {
   const store = await openMonitorStore({

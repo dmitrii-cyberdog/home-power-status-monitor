@@ -19,11 +19,8 @@ Object.assign(process.env, {
 //
 
 after(async () => {
-  const { closeRequestAgents } =
-    await import('../../src/services/requestsService/index.js')
-  const { drainTelegramApiQueue } =
-    await import('../../src/services/telegramApiQueue.js')
-  const { flushLogger } = await import('../../src/services/logger.js')
+  const { closeRequestAgents, drainTelegramApiQueue, flushLogger } =
+    await import('../../src/services/index.js')
 
   await drainTelegramApiQueue()
   closeRequestAgents()
