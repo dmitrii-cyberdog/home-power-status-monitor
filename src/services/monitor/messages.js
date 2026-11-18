@@ -1,8 +1,11 @@
-import { messageChunks } from '../../utils'
+import { getDayJs, messageChunks } from '../../utils'
 
 const messageLimit = 4000
 
-const timestamp = (value, t) => (value ? `${value} UTC` : t('monitor_none'))
+const alertTimestamp = (value, t) =>
+  value
+    ? `${getDayJs()(value).format('DD.MM.YYYY HH:mm:ss')} UTC`
+    : t('monitor_none')
 
 const statusTimestamp = (value, t) =>
   value
@@ -175,16 +178,18 @@ export const renderFullStatusMessages = (statuses, t) =>
   })
 
 export const renderPowerAlert = (delivery, home, t) => {
+  const outage = delivery.state === 'off'
+
   const lines = [
-    `${home.name}: ${t(delivery.state === 'off' ? 'monitor_outage' : 'monitor_restored')}`,
-    `${timestamp(delivery.detectedAt, t)}${delivery.baseline ? ` (${t('monitor_baseline')})` : ''}`,
+    `⚡ ${outage ? '❌' : '✅'} ${t(outage ? 'monitor_outage' : 'monitor_restored')}`,
+    '',
+    `🏠 ${home.name}`,
+    `🕒 ${alertTimestamp(delivery.detectedAt, t)}${delivery.baseline ? ` (${t('monitor_baseline')})` : ''}`,
   ]
 
   if (delivery.uncertain) {
-    lines.push(t('monitor_uncertain'))
+    lines.push('', `⚠️ ${t('monitor_uncertain')}`)
   }
-
-  lines.push(`${t('monitor_event')}: ${delivery.eventId}`)
 
   return messageChunks.splitPlainText(lines.join('\n'), messageLimit)
 }

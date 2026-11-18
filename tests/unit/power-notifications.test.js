@@ -100,10 +100,10 @@ test('pending outage and restoration alerts use each chat preference on retry', 
   fail = false
   await dispatcher.flush()
   assert.deepEqual(sent.sort(), [
-    ['1', 'Home: ru:monitor_outage'],
-    ['1', 'Home: ru:monitor_restored'],
-    ['2', 'Home: en:monitor_outage'],
-    ['2', 'Home: en:monitor_restored'],
+    ['1', '⚡ ✅ ru:monitor_restored'],
+    ['1', '⚡ ❌ ru:monitor_outage'],
+    ['2', '⚡ ✅ en:monitor_restored'],
+    ['2', '⚡ ❌ en:monitor_outage'],
   ])
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
 })

@@ -111,6 +111,7 @@ test('private help explains private and group authorization', async () => {
   assert.match(replies[0].payload.text, /\/secret <value>/)
   assert.match(replies[0].payload.text, /\/authorize_group <chat_id>/)
   assert.match(replies[0].payload.text, /\/help@power_test_bot/)
+  assert.match(replies[0].payload.text, /\/admin/)
   assert.match(replies[0].payload.text, /\n\n/)
 })
 

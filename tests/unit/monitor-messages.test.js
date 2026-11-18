@@ -41,6 +41,48 @@ const translate = locale => {
     i18n.t(locale, key, variables).replace(/[\u2068\u2069]/g, '')
 }
 
+test('power alerts display the localized state, home and timestamp on separate lines', () => {
+  const delivery = {
+    eventId: '1:25',
+    sequence: 25,
+    detectedAt: '2026-03-06T04:05:09.321Z',
+    baseline: false,
+    uncertain: false,
+  }
+
+  for (const [locale, state, heading] of [
+    ['en', 'off', '⚡ ❌ Power outage detected'],
+    ['en', 'on', '⚡ ✅ Power restored'],
+    ['ru', 'off', '⚡ ❌ Обнаружено отключение электричества'],
+    ['ru', 'on', '⚡ ✅ Электричество восстановлено'],
+  ]) {
+    assert.deepEqual(
+      messages.renderPowerAlert(
+        { ...delivery, state },
+        home({ name: 'Home & Co' }),
+        translate(locale),
+      ),
+      [`${heading}\n\n🏠 Home & Co\n🕒 06.03.2026 04:05:09 UTC`],
+    )
+  }
+})
+
+test('outage alerts retain baseline and uncertainty details when applicable', () => {
+  const [text] = messages.renderPowerAlert(
+    {
+      state: 'off',
+      detectedAt: '2026-03-06T04:05:09.321Z',
+      baseline: true,
+      uncertain: true,
+    },
+    home(),
+    translate('en'),
+  )
+
+  assert.match(text, /\(Initial baseline; actual start unknown\)/)
+  assert.match(text, /\n\n⚠️ Uncertain continuity$/)
+})
+
 test('brief status separates each heading and marks the current power state', () => {
   const homes = [
     home({ name: 'North' }),

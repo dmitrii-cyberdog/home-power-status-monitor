@@ -275,6 +275,43 @@ test('private status callbacks confirm saved actions and reject invalid targets'
   assert.equal(rotated.recipients('1', store.readChats()).length, 0)
 })
 
+test('configured bot admins can read localized admin help in private', async t => {
+  const { send, replies } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    admins: [7],
+  })
+
+  await send('/admin')
+  assert.equal(replies.length, 1)
+  assert.match(replies.at(-1).payload.text, /Bot administration\n\n/)
+  assert.match(replies.at(-1).payload.text, /\/authorize_group <chat_id>/)
+  assert.match(replies.at(-1).payload.text, /\/help@power_test_bot/)
+  assert.match(replies.at(-1).payload.text, /\/clear_chats <chat_id>/)
+  assert.match(replies.at(-1).payload.text, /\/clear_chats all/)
+  assert.match(replies.at(-1).payload.text, /authorize again and re-enable/)
+
+  await send('/ru')
+  await send('/admin')
+  assert.match(replies.at(-1).payload.text, /Управление ботом\n\n/)
+  assert.match(replies.at(-1).payload.text, /\/help@power_test_bot/)
+  assert.match(replies.at(-1).payload.text, /\/clear_chats all/)
+})
+
+test('admin help is restricted to configured admins in private chats', async t => {
+  const ordinary = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    admins: [8],
+  })
+
+  await ordinary.send('/admin')
+  assert.equal(ordinary.replies.at(-1)?.payload.text, 'Admin access required.')
+
+  const group = await notificationFixture(t, { admins: [7] })
+
+  await group.send('/admin@power_test_bot')
+  assert.equal(group.replies.length, 0)
+})
+
 test('only a configured admin in a private chat can clear registry records', async t => {
   const privateChat = { id: 7, type: 'private', first_name: 'User' }
 

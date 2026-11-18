@@ -5,6 +5,21 @@ import { monitorValidation } from '../../services'
 export const createAdminCommands = ({ access, admins = [] }) => {
   const composer = new Composer()
 
+  composer.chatType('private').command('admin', async ctx => {
+    if (!admins.includes(ctx.from?.id)) {
+      await ctx.reply(ctx.t('admin_access_denied'))
+
+      return
+    }
+
+    await ctx.reply(
+      ctx.t('admin_help', { helpCommand: `/help@${ctx.me.username}` }),
+    )
+  })
+
+  //
+  //
+
   composer.command('clear_chats', async ctx => {
     if (ctx.chat.type !== 'private') {
       return

@@ -10,6 +10,8 @@ help_private_access =
 
     Отправьте сюда /secret <значение>, чтобы авторизовать этот личный чат.
     Чтобы авторизовать группу, администратор бота отправляет сюда /authorize_group <chat_id>. Чтобы узнать ID чата, отправьте { $helpCommand } в группе.
+
+    Администраторы бота могут посмотреть список команд через /admin.
 help_group_access =
     Home Power Status Monitor
 
@@ -26,6 +28,15 @@ access_invalid = Неверный секрет.
 access_disabled = Доступ отключён.
 access_rate_limited = Слишком много попыток. Подождите минуту.
 admin_access_denied = Требуются права администратора.
+admin_help =
+    Управление ботом
+
+    /authorize_group <chat_id> — авторизовать группу. Отправьте { $helpCommand } в группе, чтобы узнать её отрицательный ID.
+
+    /clear_chats <chat_id> — удалить доступ и подписки на уведомления для одного чата.
+    /clear_chats all — удалить доступ и подписки на уведомления для всех чатов.
+
+    После очистки нужно заново авторизовать чат и включить уведомления.
 admin_clear_usage = Используйте /clear_chats <chat_id> или /clear_chats all.
 admin_authorize_group_usage = Используйте /authorize_group <chat_id> с отрицательным ID группового чата.
 admin_group_authorized = Группа авторизована.
@@ -59,7 +70,6 @@ subscription_prompt_on_notification = Ответьте названием дом
 subscription_prompt_off_notification = Ответьте названием дома, чтобы отключить уведомления.
 monitor_outage = Обнаружено отключение электричества
 monitor_restored = Электричество восстановлено
-monitor_event = Событие
 monitor_not_observed = Нет наблюдений
 monitor_status_unknown = Состояние электричества неизвестно
 monitor_last_confirmed = Последнее подтверждение

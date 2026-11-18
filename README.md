@@ -152,10 +152,10 @@ In a private chat, `/status <home name>` includes a button to enable or disable
 that home's notifications for the current chat.
 
 Set administrator user IDs in `src/.env.local`. In a private chat, admins can
-run `/clear_chats <chat_id>` for one chat or `/clear_chats all` for the entire
-registry. Cleared chats must be authorized again (`/secret` in private chats,
-`/authorize_group` for groups) and re-enable their subscriptions. Home history
-and power statistics are preserved.
+use `/admin` to see the available commands. Run `/clear_chats <chat_id>` for one
+chat or `/clear_chats all` for the entire registry. Cleared chats must be
+authorized again (`/secret` in private chats, `/authorize_group` for groups) and
+re-enable their subscriptions. Home history and power statistics are preserved.
 
 JSON records live in `volume/homes/<id>.json` and `volume/chats.json`. Only one
 process may own `volume/.monitor.lock`. For stale-lock recovery, first verify
