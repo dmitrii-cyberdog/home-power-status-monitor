@@ -72,6 +72,7 @@ export const createPowerMonitor = (
               status: observation.status,
               observedAt: observation.observedAt ?? observedAt,
               offlineStreak: memory.streak,
+              offlineChecks: settings.failedChecks,
               ...(observation.errorCode
                 ? {
                     errorCode: diagnosticCodes.has(observation.errorCode)

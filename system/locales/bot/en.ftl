@@ -81,6 +81,11 @@ monitor_status_unknown = Power status unknown
 monitor_last_confirmed = Last confirmed
 monitor_last_known = Last known state
 monitor_check_inconclusive = The current state could not be confirmed.
+monitor_ezviz_now = EZVIZ now
+monitor_offline_checks = { $count } of { $total } { $total ->
+    [one] check
+   *[other] checks
+    }
 monitor_continuity_unknown = Continuous duration unknown
 monitor_power_for = { $state } for { $duration } (since detection)
 monitor_less_minute = less than a minute

@@ -479,3 +479,37 @@ test('Russian brief status distinguishes a confirmed outage from the last known 
   assert.match(inconclusive, /Подтвердить текущее состояние не удалось/)
   assert.doesNotMatch(inconclusive, /Состояние электричества неизвестно|уже /)
 })
+
+test('inconclusive brief status shows the current EZVIZ device reading', () => {
+  const pending = home({
+    status: 'unknown',
+    lastInferredStatus: 'on',
+    lastInferredAt: new Date(0).toISOString(),
+    devices: [
+      {
+        id: '1',
+        name: 'Camera',
+        status: 'offline',
+        observedAt: new Date(0).toISOString(),
+        offlineStreak: 1,
+        offlineChecks: 3,
+      },
+    ],
+  })
+
+  const [english] = renderStatusMessages([pending], translate('en'))
+  const [russian] = renderStatusMessages([pending], translate('ru'))
+
+  assert.match(english, /EZVIZ now: Camera — Offline \(1 of 3 checks\)/)
+  assert.doesNotMatch(english, /could not be confirmed/)
+  assert.match(russian, /EZVIZ сейчас: Camera — Не в сети \(1 из 3 проверок\)/)
+  assert.doesNotMatch(russian, /Подтвердить текущее состояние не удалось/)
+
+  const [failed] = renderStatusMessages(
+    [{ ...pending, devices: home().devices }],
+    translate('en'),
+  )
+
+  assert.match(failed, /The current state could not be confirmed/)
+  assert.doesNotMatch(failed, /EZVIZ now/)
+})

@@ -81,6 +81,11 @@ monitor_status_unknown = Состояние электричества неиз�
 monitor_last_confirmed = Последнее подтверждение
 monitor_last_known = По последним данным
 monitor_check_inconclusive = Подтвердить текущее состояние не удалось.
+monitor_ezviz_now = EZVIZ сейчас
+monitor_offline_checks = { $count } из { $total } { $total ->
+    [one] проверки
+   *[other] проверок
+    }
 monitor_continuity_unknown = Непрерывная длительность неизвестна
 monitor_power_for = { $state } уже { $duration } (с момента обнаружения)
 monitor_less_minute = меньше минуты

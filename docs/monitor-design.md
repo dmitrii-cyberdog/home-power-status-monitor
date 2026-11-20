@@ -90,10 +90,12 @@ Last power off: 2026-11-17 20:10 GMT+2
 
 Missing history is shown as not observed. An online camera initializes `lastOn`
 and the decisive state, not an invented `lastOff`. An inconclusive check shows
-the last known state, episode detection time and last confirmation, with a note
-that the current state could not be confirmed. Without a prior decisive
-observation, the bot reports unknown power. Gaps and restarts can leave
-continuous duration unknown even after a fresh decisive observation.
+the last known state, episode detection time and last confirmation, followed by
+the current EZVIZ reading of each device, with the offline check count. Only
+when no device returned a readable status does it note that the current state
+could not be confirmed. Without a prior decisive observation, the bot reports
+unknown power. Gaps and restarts can leave continuous duration unknown even
+after a fresh decisive observation.
 
 `/status_full [home name]` uses the same access, refresh and filtering rules. It
 adds observation/detection timestamps, baseline and uncertainty notes, sampled

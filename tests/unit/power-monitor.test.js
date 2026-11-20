@@ -31,7 +31,11 @@ test('offline streaks, unknown reset, identity replacement and coalescing', asyn
     },
   )
 
-  assert.equal((await monitor.check()).homes[0].status, 'unknown')
+  const first = (await monitor.check()).homes[0]
+
+  assert.equal(first.status, 'unknown')
+  assert.equal(first.devices[0].offlineStreak, 1)
+  assert.equal(first.devices[0].offlineChecks, 3)
   await Promise.all([monitor.check(), monitor.check()])
   assert.equal(calls, 2)
   const off = (await monitor.check()).homes[0]

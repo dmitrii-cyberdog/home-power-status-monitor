@@ -66,7 +66,26 @@ const summaryLines = (home, t, timestamp) => {
       lines.push([
         `${t('monitor_last_confirmed')}: ${timestamp(home.lastInferredAt)}`,
       ])
-      lines.push([t('monitor_check_inconclusive'), 'i'])
+
+      // A readable EZVIZ answer is shown even before it confirms a state change.
+      const readable = (home.devices ?? []).some(
+        device => device.status === 'online' || device.status === 'offline',
+      )
+
+      if (readable) {
+        for (const device of home.devices) {
+          const checks =
+            device.status === 'offline'
+              ? ` (${t('monitor_offline_checks', { count: device.offlineStreak, total: device.offlineChecks })})`
+              : ''
+
+          lines.push([
+            `${t('monitor_ezviz_now')}: ${device.name} — ${t(`monitor_device_${device.status}`)}${checks}`,
+          ])
+        }
+      } else {
+        lines.push([t('monitor_check_inconclusive'), 'i'])
+      }
     } else {
       lines.push([t('monitor_status_unknown'), 'b'])
       lines.push([`${t('monitor_observed')}: ${timestamp(home.observedAt)}`])
