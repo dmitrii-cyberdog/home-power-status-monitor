@@ -5,7 +5,7 @@ import { createChatAccess } from '../chatAccess'
 import { createHomeMonitor } from '../homeMonitor'
 import { createPowerMonitor, createPowerNotifications } from '../power'
 import { createTelegramSendGuard } from '../telegramApiQueue'
-import { renderPowerAlert } from './messages'
+import { renderPowerAlert, renderRecurringStatusMessages } from './messages'
 import { openMonitorStore } from './store'
 
 export const createMonitorRuntime = async ({
@@ -49,11 +49,13 @@ export const createMonitorRuntime = async ({
 
     let timer
 
+    let recurringTimer
+
     let stopped = false
 
-    const flush = () => {
+    const flush = options => {
       void notifications
-        .flush()
+        .flush(options)
         .catch(() => log?.error('Notification pass failed'))
     }
 
@@ -70,16 +72,23 @@ export const createMonitorRuntime = async ({
           access,
           homes,
           log,
-          send: (chatId, text, isAllowed) =>
+          now,
+          getStatuses: homeMonitor.getStatuses,
+          send: (chatId, text, isAllowed, options) =>
             api.sendMessage(
               chatId,
               text,
-              undefined,
+              options,
               createTelegramSendGuard(isAllowed),
             ),
           renderAlert: (delivery, home, locale) =>
             renderPowerAlert(delivery, home, (key, variables) =>
               getI18n().t(locale, key, variables),
+            ),
+          renderStatus: (status, home, locale) =>
+            renderRecurringStatusMessages(
+              { ...status, timeZone: home.timeZone },
+              (key, variables) => getI18n().t(locale, key, variables),
             ),
         })
       },
@@ -90,10 +99,21 @@ export const createMonitorRuntime = async ({
 
         flush()
         timer = setInterval(flush, intervalSeconds * 1000)
+
+        if (
+          60 % intervalSeconds !== 0 &&
+          homes.some(home => home.notificationIntervalMinutes > 0)
+        ) {
+          recurringTimer = setInterval(
+            () => flush({ includeAlerts: false }),
+            60000,
+          )
+        }
       },
       stopNotifications() {
         stopped = true
         clearInterval(timer)
+        clearInterval(recurringTimer)
         notifications?.stop()
       },
       drainNotifications: () => notifications?.drain() ?? Promise.resolve(),

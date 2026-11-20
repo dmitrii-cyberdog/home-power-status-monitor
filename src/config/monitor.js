@@ -6,7 +6,7 @@ export const parseMonitorConfig = env => {
     throw new Error(`Invalid ${key}`)
   }
 
-  const integer = (key, fallback, max = Number.MAX_SAFE_INTEGER) => {
+  const integer = (key, fallback, max = Number.MAX_SAFE_INTEGER, min = 1) => {
     const raw = env[key] ?? String(fallback)
 
     const value = Number(raw)
@@ -14,7 +14,7 @@ export const parseMonitorConfig = env => {
     if (
       !/^-?\d+$/.test(raw) ||
       !Number.isSafeInteger(value) ||
-      value < 1 ||
+      value < min ||
       value > max
     ) {
       fail(key)
@@ -51,6 +51,8 @@ export const parseMonitorConfig = env => {
         !positiveId(home[1]) ||
         ![
           'NAME',
+          'TIME_ZONE',
+          'NOTIFICATION_INTERVAL_MINUTES',
           'EZVIZ_API_APP_KEY',
           'EZVIZ_API_SECRET',
           'EZVIZ_API_BASE_URL',
@@ -86,6 +88,26 @@ export const parseMonitorConfig = env => {
       const prefix = `HOME_${id}_`
 
       const name = required(`${prefix}NAME`).trim()
+
+      const timeZoneKey = `${prefix}TIME_ZONE`
+
+      const timeZone = env[timeZoneKey] ?? (id === '1' ? 'GMT+2' : 'UTC')
+
+      if (
+        timeZone !== 'UTC' &&
+        !/^GMT[+-](?:(?:[0-9]|1[0-3])(?::[0-5][0-9])?|14(?::00)?)$/.test(
+          timeZone,
+        )
+      ) {
+        fail(timeZoneKey)
+      }
+
+      const notificationIntervalMinutes = integer(
+        `${prefix}NOTIFICATION_INTERVAL_MINUTES`,
+        0,
+        Math.floor(Number.MAX_SAFE_INTEGER / 60000) - 1,
+        0,
+      )
 
       const selected = [...devices.values()]
         .filter(device => device.homeId === id)
@@ -150,7 +172,15 @@ export const parseMonitorConfig = env => {
           }
         : null
 
-      return { id, name, offlineDeviceCount, ezviz, devices: selected }
+      return {
+        id,
+        name,
+        timeZone,
+        notificationIntervalMinutes,
+        offlineDeviceCount,
+        ezviz,
+        devices: selected,
+      }
     })
 
   if (

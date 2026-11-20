@@ -141,3 +141,50 @@ test('chat registry accepts legacy and current grant IDs but rejects malformed o
     )
   }
 })
+
+test('home validation accepts legacy and current deliveries and rejects invalid episode history', () => {
+  const record = monitorRecords.createHomeRecord('1')
+
+  const delivery = {
+    eventId: '1:1',
+    sequence: 1,
+    chatId: '1',
+    generation: 'g',
+    subscriptionId: 's',
+    locale: 'en',
+    state: 'off',
+    detectedAt: '2026-11-20T12:00:00.000Z',
+    baseline: false,
+    uncertain: false,
+  }
+
+  record.eventSequence = 1
+  record.pendingDeliveries = [delivery]
+
+  assert.equal(monitorValidation.validateHomeRecord(record, '1'), record)
+
+  const history = {
+    previousOnAt: '2026-11-20T09:30:00.000Z',
+    previousOffAt: '2026-11-20T08:00:00.000Z',
+    precedingStateMs: 9000000,
+  }
+
+  record.pendingDeliveries = [{ ...delivery, history }]
+
+  assert.equal(monitorValidation.validateHomeRecord(record, '1'), record)
+
+  for (const patch of [
+    { previousOffAt: '2026-11-20T10:00:00+02:00' },
+    { precedingStateMs: -1 },
+    { extra: 0 },
+  ]) {
+    record.pendingDeliveries = [
+      { ...delivery, history: { ...history, ...patch } },
+    ]
+
+    assert.throws(
+      () => monitorValidation.validateHomeRecord(record, '1'),
+      /Invalid delivery record/,
+    )
+  }
+})

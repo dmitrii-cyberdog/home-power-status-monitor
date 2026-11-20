@@ -35,6 +35,8 @@ const storageFolder = path.resolve(process.cwd(), '../system')
 
 const admins = new Set()
 
+let primaryAdminId = null
+
 for (let index = 1; index <= 50; index++) {
   const variable = `TG_ADMIN_${index}`
 
@@ -51,6 +53,10 @@ for (let index = 1; index <= 50; index++) {
   }
 
   admins.add(id)
+
+  if (index === 1) {
+    primaryAdminId = id
+  }
 }
 
 //
@@ -99,6 +105,7 @@ export default {
     token: process.env.TG_BOT_TOKEN || '',
     accessSecret: process.env.TG_BOT_ACCESS_SECRET || '',
     admins: [...admins],
+    primaryAdminId,
 
     i18nSettings: {
       defaultLocale,

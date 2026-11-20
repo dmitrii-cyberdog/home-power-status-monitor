@@ -48,3 +48,45 @@ test('monitor rejects unsafe configuration without disclosing values', () => {
     parseMonitorConfig({ HOME_1_NAME: 'Same', HOME_2_NAME: ' same ' }),
   )
 })
+
+test('homes configure fixed time zones and recurring notification minutes', () => {
+  const { homes } = parseMonitorConfig({
+    HOME_1_NAME: 'One',
+    HOME_2_NAME: 'Two',
+    HOME_2_NOTIFICATION_INTERVAL_MINUTES: '5',
+    HOME_3_NAME: 'Three',
+    HOME_3_TIME_ZONE: 'GMT-3:30',
+    HOME_3_NOTIFICATION_INTERVAL_MINUTES: '0',
+  })
+
+  assert.deepEqual(
+    homes.map(home => [home.timeZone, home.notificationIntervalMinutes]),
+    [
+      ['GMT+2', 0],
+      ['UTC', 5],
+      ['GMT-3:30', 0],
+    ],
+  )
+
+  for (const value of ['-1', '1.5', '', '9007199254740991']) {
+    assert.throws(
+      () =>
+        parseMonitorConfig({
+          HOME_1_NAME: 'One',
+          HOME_1_NOTIFICATION_INTERVAL_MINUTES: value,
+        }),
+      /Invalid HOME_1_NOTIFICATION_INTERVAL_MINUTES/,
+    )
+  }
+
+  for (const value of ['GMT+14:01', 'GMT+2:60', 'Europe/Prague', '']) {
+    assert.throws(
+      () =>
+        parseMonitorConfig({
+          HOME_1_NAME: 'One',
+          HOME_1_TIME_ZONE: value,
+        }),
+      /Invalid HOME_1_TIME_ZONE/,
+    )
+  }
+})

@@ -2,22 +2,30 @@ import { getDayJs, messageChunks } from '../../utils'
 
 const messageLimit = 4000
 
-const alertTimestamp = (value, t) =>
-  value
-    ? `${getDayJs()(value).format('DD.MM.YYYY HH:mm:ss')} UTC`
-    : t('monitor_none')
+const homeTimestamp = (value, t, timeZone = 'UTC', format) => {
+  if (!value) {
+    return t('monitor_not_observed')
+  }
 
-const statusTimestamp = (value, t) =>
+  const [hours, minutes = '0'] = timeZone.slice(4).split(':')
+
+  const sign = timeZone.startsWith('GMT-') ? -1 : 1
+
+  const offset = sign * (Number(hours) * 60 + Number(minutes))
+
+  return `${getDayJs()(value).add(offset, 'minute').format(format)} ${timeZone}`
+}
+
+const statusFormat = 'YYYY-MM-DD HH:mm'
+
+const notificationFormat = 'DD.MM.YYYY HH:mm:ss'
+
+const statusEpisode = (value, t, timestamp) =>
   value
-    ? `${new Date(value).toISOString().slice(0, 16).replace('T', ' ')} UTC`
+    ? `${timestamp(value.detectedAt)}${value.baseline ? ` (${t('monitor_baseline')})` : ''}`
     : t('monitor_not_observed')
 
-const statusEpisode = (value, t) =>
-  value
-    ? `${statusTimestamp(value.detectedAt, t)}${value.baseline ? ` (${t('monitor_baseline')})` : ''}`
-    : t('monitor_not_observed')
-
-const duration = (milliseconds, t) => {
+const duration = (milliseconds, t, includeMinutes = false) => {
   const minutes = Math.floor(milliseconds / 60000)
 
   if (minutes < 1) {
@@ -31,6 +39,7 @@ const duration = (milliseconds, t) => {
     ? [
         ['days', days],
         ['hours', hours % 24],
+        ['minutes', includeMinutes ? minutes % 60 : 0],
       ]
     : hours
       ? [
@@ -45,7 +54,7 @@ const duration = (milliseconds, t) => {
     .join(' ')
 }
 
-const summaryLines = (home, t) => {
+const summaryLines = (home, t, timestamp) => {
   const lines = [[home.name, 'b']]
 
   if (home.status === 'unknown') {
@@ -53,12 +62,10 @@ const summaryLines = (home, t) => {
 
     if (home.lastInferredStatus && home.lastInferredStatus !== 'unknown') {
       lines.push([
-        `${t('monitor_last_confirmed')}: ${t(`monitor_${home.lastInferredStatus}`)} (${statusTimestamp(home.lastInferredAt, t)})`,
+        `${t('monitor_last_confirmed')}: ${t(`monitor_${home.lastInferredStatus}`)} (${timestamp(home.lastInferredAt)})`,
       ])
     } else {
-      lines.push([
-        `${t('monitor_observed')}: ${statusTimestamp(home.observedAt, t)}`,
-      ])
+      lines.push([`${t('monitor_observed')}: ${timestamp(home.observedAt)}`])
     }
   } else {
     lines.push([
@@ -80,7 +87,7 @@ const summaryLines = (home, t) => {
     lines.push([''])
 
     lines.push([
-      `${t(`monitor_last_${opposite}`)}: ${statusTimestamp(home[opposite === 'on' ? 'lastOn' : 'lastOff']?.detectedAt, t)}`,
+      `${t(`monitor_last_${opposite}`)}: ${timestamp(home[opposite === 'on' ? 'lastOn' : 'lastOff']?.detectedAt)}`,
     ])
   }
 
@@ -105,19 +112,32 @@ const homeLines = (statuses, t, render) => {
   return messageChunks.chunkHtmlLines(lines, messageLimit)
 }
 
-export const renderStatusMessages = (statuses, t) =>
+const renderBriefStatus = (statuses, t, format) =>
   homeLines(statuses, t, (home, translate) => {
-    const [heading, [state, tag], ...details] = summaryLines(home, translate)
+    const timestamp = value =>
+      homeTimestamp(value, translate, home.timeZone, format)
+
+    const [heading, [state, tag], ...details] = summaryLines(
+      home,
+      translate,
+      timestamp,
+    )
 
     const icon = { on: '⚡ ✅', off: '⚡ ❌', unknown: '⚡' }[home.status]
 
     return [heading, [''], [`${icon} ${state}`, tag], ...details]
   })
 
-const deviceLines = (device, t) => {
+export const renderStatusMessages = (statuses, t) =>
+  renderBriefStatus(statuses, t, statusFormat)
+
+export const renderRecurringStatusMessages = (home, t) =>
+  renderBriefStatus([home], t, notificationFormat)
+
+const deviceLines = (device, t, timestamp) => {
   const lines = [
     [`${device.name}: ${t(`monitor_device_${device.status}`)}`],
-    [`${t('monitor_observed')}: ${statusTimestamp(device.observedAt, t)}`],
+    [`${t('monitor_observed')}: ${timestamp(device.observedAt)}`],
     [`${t('monitor_offline_streak')}: ${device.offlineStreak}`],
   ]
 
@@ -130,7 +150,10 @@ const deviceLines = (device, t) => {
 
 export const renderFullStatusMessages = (statuses, t) =>
   homeLines(statuses, t, (home, translate) => {
-    const lines = [...summaryLines(home, translate), ['']]
+    const timestamp = value =>
+      homeTimestamp(value, translate, home.timeZone, statusFormat)
+
+    const lines = [...summaryLines(home, translate, timestamp), ['']]
 
     if (home.stale) {
       lines.push([translate('monitor_stale'), 'i'])
@@ -141,18 +164,14 @@ export const renderFullStatusMessages = (statuses, t) =>
     }
 
     lines.push(
+      [`${translate('monitor_observed')}: ${timestamp(home.observedAt)}`],
       [
-        `${translate('monitor_observed')}: ${statusTimestamp(home.observedAt, translate)}`,
+        `${translate('monitor_last_on')}: ${statusEpisode(home.lastOn, translate, timestamp)}`,
       ],
       [
-        `${translate('monitor_last_on')}: ${statusEpisode(home.lastOn, translate)}`,
+        `${translate('monitor_last_off')}: ${statusEpisode(home.lastOff, translate, timestamp)}`,
       ],
-      [
-        `${translate('monitor_last_off')}: ${statusEpisode(home.lastOff, translate)}`,
-      ],
-      [
-        `${translate('monitor_since')}: ${statusTimestamp(home.stateSince, translate)}`,
-      ],
+      [`${translate('monitor_since')}: ${timestamp(home.stateSince)}`],
       [''],
       [translate('monitor_totals'), 'b'],
       [`${translate('monitor_on')}: ${duration(home.stats.onMs, translate)}`],
@@ -170,7 +189,7 @@ export const renderFullStatusMessages = (statuses, t) =>
       lines.push([''], [translate('monitor_devices'), 'b'])
 
       for (const device of home.devices) {
-        lines.push(...deviceLines(device, translate))
+        lines.push(...deviceLines(device, translate, timestamp))
       }
     }
 
@@ -184,8 +203,36 @@ export const renderPowerAlert = (delivery, home, t) => {
     `⚡ ${outage ? '❌' : '✅'} ${t(outage ? 'monitor_outage' : 'monitor_restored')}`,
     '',
     `🏠 ${home.name}`,
-    `🕒 ${alertTimestamp(delivery.detectedAt, t)}${delivery.baseline ? ` (${t('monitor_baseline')})` : ''}`,
+    `🕒 ${homeTimestamp(delivery.detectedAt, t, home.timeZone, notificationFormat)}${delivery.baseline ? ` (${t('monitor_baseline')})` : ''}`,
   ]
+
+  const { previousOffAt, precedingStateMs } = delivery.history ?? {}
+
+  if (!outage && previousOffAt) {
+    lines.push(
+      `${t('monitor_outage_detected_at')}: ${homeTimestamp(previousOffAt, t, home.timeZone, notificationFormat)}`,
+    )
+  }
+
+  if (precedingStateMs != null) {
+    lines.push(
+      `${t(outage ? 'monitor_observed_uptime' : 'monitor_observed_downtime')}: ${duration(precedingStateMs, t, true)}`,
+    )
+  }
+
+  if (outage && previousOffAt) {
+    lines.push(
+      `${t('monitor_previous_outage')}: ${homeTimestamp(previousOffAt, t, home.timeZone, notificationFormat)}`,
+    )
+
+    const elapsed = Date.parse(delivery.detectedAt) - Date.parse(previousOffAt)
+
+    if (elapsed >= 0) {
+      lines.push(
+        `${t('monitor_between_outages')}: ${duration(elapsed, t, true)}`,
+      )
+    }
+  }
 
   if (delivery.uncertain) {
     lines.push('', `⚠️ ${t('monitor_uncertain')}`)

@@ -1,6 +1,7 @@
 import config from '../config'
 
 import { Logger, createMonitorRuntime } from '../services'
+import { notifyTelegramAdminStarted } from '../services/logger'
 
 import botLoader from './bot'
 import cronLoader from './cron'
@@ -41,6 +42,10 @@ export default async (runtime, onBotFailure = () => {}, signal) => {
       runtime.botTask = runtime.botRunner.task()
 
       void runtime.botTask.catch(onBotFailure)
+
+      if (!signal?.aborted) {
+        notifyTelegramAdminStarted()
+      }
     }
 
     Logger.notice('Home Power Status Monitor started', {

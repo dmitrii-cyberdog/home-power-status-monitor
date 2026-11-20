@@ -235,15 +235,17 @@ const broadcastTelegram = async (payload, isImportant = false) => {
     ? config.logs.telegram.groupImportant
     : config.logs.telegram.group
 
+  await sendTelegramBroadcast(config.logs.telegram.botToken, chatId, text, {
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  })
+}
+
+const sendTelegramBroadcast = async (token, chatId, text, options) => {
   try {
     await axios.post(
-      `https://api.telegram.org/bot${config.logs.telegram.botToken}/sendMessage`,
-      {
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      },
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      { chat_id: chatId, text, ...options },
       {
         timeout: 5000,
         maxBodyLength: 64 * 1024,
@@ -261,17 +263,37 @@ const broadcastTelegram = async (payload, isImportant = false) => {
 const pendingTelegramBroadcasts = new Set()
 const MAX_PENDING_TELEGRAM_BROADCASTS = 3
 
-const queueTelegramBroadcast = (payload, isImportant = false) => {
+const queueTelegramBroadcast = send => {
   if (pendingTelegramBroadcasts.size >= MAX_PENDING_TELEGRAM_BROADCASTS) {
     return
   }
 
-  const task = broadcastTelegram(payload, isImportant).finally(() => {
+  const task = send().finally(() => {
     pendingTelegramBroadcasts.delete(task)
   })
 
   pendingTelegramBroadcasts.add(task)
 }
+
+const queueTelegramAdminMessage = message => {
+  const { token, primaryAdminId } = config.botSettings
+
+  if (!token || primaryAdminId === null) {
+    return
+  }
+
+  const text =
+    `[${config.logs.info.name} · ${config.envName}] ${message}`.slice(0, 4000)
+
+  queueTelegramBroadcast(() =>
+    sendTelegramBroadcast(token, primaryAdminId, text),
+  )
+}
+
+export const notifyTelegramAdminStarted = () =>
+  queueTelegramAdminMessage(
+    `Telegram bot started at ${new Date().toISOString()}`,
+  )
 
 export const flushLogger = async () => {
   await Promise.allSettled([...pendingTelegramBroadcasts])
@@ -346,16 +368,22 @@ class Logger {
     // if important, send to important group, otherwise send to normal group, don't send twice
     //
 
+    if (BROADCAST_LEVELS[level] <= BROADCAST_LEVELS.error) {
+      queueTelegramAdminMessage(
+        `${level.toUpperCase()} · ${payload.main.ts} · ${message}`,
+      )
+    }
+
     if (
       config.logs.telegram.isEnabled &&
       BROADCAST_LEVELS[level] <= config.logs.telegram.sensitivityImportant
     ) {
-      queueTelegramBroadcast(payload, true)
+      queueTelegramBroadcast(() => broadcastTelegram(payload, true))
     } else if (
       config.logs.telegram.isEnabled &&
       BROADCAST_LEVELS[level] <= config.logs.telegram.sensitivity
     ) {
-      queueTelegramBroadcast(payload)
+      queueTelegramBroadcast(() => broadcastTelegram(payload))
     }
   }
 

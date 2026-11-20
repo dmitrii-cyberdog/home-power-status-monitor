@@ -81,7 +81,7 @@ opposite-state detection. For example:
 ```text
 Family Home
 Power on for 2 days 3 hours (since detection)
-Last power off: 2026-11-17 18:10 UTC
+Last power off: 2026-11-17 20:10 GMT+2
 ```
 
 Missing history is shown as not observed. An online camera initializes `lastOn`
@@ -148,6 +148,24 @@ same home commit. Subscribing does not replay old events. Disable/re-enable
 creates a new subscription identity, invalidating older pending deliveries.
 Before transport submission, access and subscription identity are rechecked. An
 already submitted request cannot be recalled.
+
+Alerts capture prior episode detections and any supported preceding duration in
+the same commit. Restoration shows the prior off detection and observed
+downtime. Outage shows observed uptime, the previous off detection and elapsed
+time between the two detections. Gaps can leave uptime or downtime unknown. The
+time between detections is elapsed wall time. Stored timestamps remain UTC. The
+bot formats notification dates in the home's fixed offset and includes the zone
+label. Both manual status commands use each home’s configured zone, including
+device observation times in `/status_full`.
+
+When `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` is positive, the notification
+worker sends the brief cached status to current subscribers on that home's
+cadence. The first update is due one interval after startup, and the schedule
+resets on restart. It checks for due updates at least once per minute while
+idle, coalesces missed intervals, and skips a failed update until the next
+scheduled one after the Telegram transport's own retries. It uses the same
+subscription and locale guards as transition alerts. An omitted or zero interval
+disables these updates.
 
 Delivery is at least once while pending: a crash after send and before saved ack
 can duplicate an event with the same event ID. Temporary failures retry on later

@@ -66,6 +66,7 @@ test('configuration has no HTTP settings and defaults to disabled bot and cron',
   assert.equal(config.appSettings, undefined)
   assert.equal(config.botSettings.token, '')
   assert.deepEqual(config.botSettings.admins, [])
+  assert.equal(config.botSettings.primaryAdminId, null)
   assert.deepEqual(config.cron.checkPowerStatus, {
     isEnabled: false,
   })
@@ -80,6 +81,18 @@ test('admin configuration reads sparse slots from dotenv and deduplicates IDs', 
 
   assert.equal(result.status, 0, result.stderr)
   assert.deepEqual(JSON.parse(result.stdout).botSettings.admins, [900, 910])
+  assert.equal(JSON.parse(result.stdout).botSettings.primaryAdminId, 900)
+})
+
+test('a sparse admin list does not promote a later slot to primary admin', t => {
+  const result = loadConfig(t, { TG_ADMIN_5: '900' })
+
+  assert.equal(result.status, 0, result.stderr)
+
+  const { botSettings } = JSON.parse(result.stdout)
+
+  assert.deepEqual(botSettings.admins, [900])
+  assert.equal(botSettings.primaryAdminId, null)
 })
 
 test('invalid admin IDs fail configuration without exposing their values', t => {

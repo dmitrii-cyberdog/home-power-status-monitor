@@ -284,3 +284,110 @@ test('locale keys and variables agree and status renders both languages', async 
     assert.doesNotMatch(result, /monitor_/)
   }
 })
+
+test('notification timestamps use the fixed home offset across midnight', t => {
+  const oldZone = process.env.TZ
+
+  t.after(() => {
+    if (oldZone === undefined) {
+      delete process.env.TZ
+    } else {
+      process.env.TZ = oldZone
+    }
+  })
+
+  process.env.TZ = 'America/New_York'
+
+  const [alert] = messages.renderPowerAlert(
+    { state: 'off', detectedAt: '2026-11-20T23:15:00.000Z' },
+    home({ timeZone: 'GMT+2' }),
+    translate('en'),
+  )
+
+  assert.match(alert, /21\.11\.2026 01:15:00 GMT\+2/)
+
+  const [status] = messages.renderRecurringStatusMessages(
+    home({
+      status: 'unknown',
+      timeZone: 'GMT+2',
+      observedAt: '2026-11-20T23:15:00.000Z',
+    }),
+    translate('en'),
+  )
+
+  assert.match(status, /21\.11\.2026 01:15:00 GMT\+2/)
+})
+
+test('transition alerts show localized episode history and omit unsupported durations', () => {
+  const render = (state, detectedAt, history, locale = 'en') =>
+    messages.renderPowerAlert(
+      { state, detectedAt, history },
+      home({ timeZone: 'GMT+2' }),
+      translate(locale),
+    )[0]
+
+  const previousOffAt = '2026-11-20T08:00:00.000Z'
+
+  const restored = render('on', '2026-11-20T09:30:00.000Z', {
+    previousOffAt,
+    precedingStateMs: 5400000,
+  })
+
+  assert.match(restored, /Outage detected at: 20\.11\.2026 10:00:00 GMT\+2/)
+  assert.match(restored, /Observed time without power: 1 hour 30 minutes/)
+
+  const outage = render('off', '2026-11-20T12:00:00.000Z', {
+    previousOffAt,
+    precedingStateMs: 9000000,
+  })
+
+  assert.match(outage, /Observed time with power: 2 hours 30 minutes/)
+  assert.match(
+    outage,
+    /Previous outage detected at: 20\.11\.2026 10:00:00 GMT\+2/,
+  )
+  assert.match(outage, /Time between outage detections: 4 hours/)
+
+  const uncertain = render(
+    'off',
+    '2026-11-20T07:00:00.000Z',
+    { previousOffAt, precedingStateMs: null },
+    'ru',
+  )
+
+  assert.match(uncertain, /20\.11\.2026 10:00:00 GMT\+2/)
+  assert.doesNotMatch(uncertain, /Время с электричеством|Между обнаружениями/)
+})
+
+test('manual status timestamps follow each home offset, including device observations', () => {
+  const observedAt = '2026-11-20T23:15:00.000Z'
+
+  const first = home({
+    name: 'East',
+    timeZone: 'GMT+2',
+    observedAt,
+    lastOn: { detectedAt: observedAt, baseline: true },
+    lastOff: { detectedAt: observedAt, baseline: false },
+    stateSince: observedAt,
+    devices: [{ ...home().devices[0], observedAt }],
+  })
+
+  const second = home({
+    name: 'West',
+    timeZone: 'GMT-3:30',
+    status: 'unknown',
+    lastInferredStatus: 'off',
+    lastInferredAt: observedAt,
+  })
+
+  const [brief] = renderStatusMessages([first, second], translate('en'))
+
+  assert.match(brief, /Last power off: 2026-11-21 01:15 GMT\+2/)
+  assert.match(brief, /2026-11-20 19:45 GMT-3:30/)
+  assert.doesNotMatch(brief, / UTC/)
+
+  const [full] = messages.renderFullStatusMessages([first], translate('en'))
+
+  assert.equal(full.match(/2026-11-21 01:15 GMT\+2/g)?.length, 6)
+  assert.doesNotMatch(full, / UTC/)
+})

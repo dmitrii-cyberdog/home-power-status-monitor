@@ -55,7 +55,7 @@ server overlays. Replace `CRON_CHECK_POWER_STATUS_TEMPLATE` with
 | `TG_BOT_ACCESS_SECRET`               | empty   | Exact secret for each chat's `/secret` authorization. |
 | `TG_ADMIN_1` through `TG_ADMIN_50`   | empty   | Telegram user IDs allowed to clear chat records.      |
 | `CRON_CHECK_POWER_STATUS_IS_ENABLED` | `0`     | Enable interval polling.                              |
-| `POWER_CHECK_INTERVAL_SECONDS`       | `60`    | Poll and notification interval.                       |
+| `POWER_CHECK_INTERVAL_SECONDS`       | `60`    | Power polling and base alert retry interval.          |
 | `POWER_OFF_FAILED_CHECKS`            | `3`     | Consecutive offline samples per device.               |
 
 Configure `HOME_<id>_NAME`, per-home `EZVIZ_API_APP_KEY`, `EZVIZ_API_SECRET`,
@@ -65,6 +65,17 @@ the template. NAME selects the camera exactly; SERIAL is optional. Set
 instead of the default one. Empty homes remain unknown. Only the Europe origin
 is supported. Retired cron expressions are ignored; global EZVIZ keys are
 rejected.
+
+Home notifications and status commands show timestamps in `HOME_<id>_TIME_ZONE`.
+Home 1 defaults to fixed `GMT+2` year-round. Other homes default to `UTC`. Set a
+fixed offset such as `GMT-3:30` to override a home. Outage and restoration
+alerts include observed episode durations when sampling supports them.
+
+Set `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` to send recurring status to that
+home's existing subscribers. Use whole minutes and leave it omitted or set to
+`0` to disable it. The first update is due one interval after the notification
+worker starts. Updates use cached status, so they work with an unknown reading
+and do not trigger an extra poll.
 
 Keep credentials and home-specific settings in ignored local env files. Use the
 commented home/device block in `src/.env` as a configuration example.
@@ -151,6 +162,12 @@ and subscriptions.
 In a private chat, `/status <home name>` includes a button to enable or disable
 that home's notifications for the current chat.
 
+With `TG_BOT_TOKEN` and `TG_ADMIN_1` set, the bot sends that admin a private
+message at startup, including after a restart. Logger errors and higher severity
+levels send a short message with the level, environment and UTC time. Detailed
+diagnostics stay in local logs. The admin must open a private chat with the bot
+and send `/start` once to receive messages.
+
 Set administrator user IDs in `src/.env.local`. In a private chat, admins can
 use `/admin` to see the available commands. Run `/clear_chats <chat_id>` for one
 chat or `/clear_chats all` for the entire registry. Cleared chats must be
@@ -163,10 +180,11 @@ all workers and PM2 watch restarts are stopped and the old process is gone, then
 remove only its stale lock. Preserve data files. Windows PM2 manifests enable
 `shutdown_with_message`; the worker handles that message with a bounded graceful
 drain. Apply the updated manifest before testing watch restarts. Unknown/restart
-gaps count as uncertain time; status timestamps are UTC observations, not
-physical switch times. Initial off baselines alert; initial on baselines do not.
-Delivery is at least once while pending, with a send/ack crash duplicate window
-and a cap of 1000 pending deliveries per home. Dropped alerts are counted. See
+gaps count as uncertain time. Status timestamps show when the monitor observed
+the state, and stored timestamps use UTC. Initial off baselines alert; initial
+on baselines do not. Delivery is at least once while pending, with a send/ack
+crash duplicate window and a cap of 1000 pending deliveries per home. Dropped
+alerts are counted. See
 [monitor behavior and operations](docs/monitor-design.md) for inference,
 authorization, retry, uncertainty and shutdown details.
 

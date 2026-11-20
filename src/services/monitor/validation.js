@@ -74,7 +74,7 @@ const homeRecord = strictShape({
   droppedAlerts: isNonnegativeInteger,
 })
 
-const deliveryRecord = strictShape({
+const deliveryFields = {
   eventId: isNonemptyString,
   sequence: value => isNonnegativeInteger(value) && value >= 1,
   state: isPowerState,
@@ -85,6 +85,17 @@ const deliveryRecord = strictShape({
   generation: isNonemptyString,
   subscriptionId: isNonemptyString,
   locale: isLocale,
+}
+
+const legacyDeliveryRecord = strictShape(deliveryFields)
+
+const deliveryRecord = strictShape({
+  ...deliveryFields,
+  history: strictShape({
+    previousOnAt: isOptionalTimestamp,
+    previousOffAt: isOptionalTimestamp,
+    precedingStateMs: nullable(isNonnegativeInteger),
+  }),
 })
 
 //
@@ -136,7 +147,7 @@ export const validateHomeRecord = (value, id) => {
 
   for (const delivery of value.pendingDeliveries) {
     if (
-      !deliveryRecord(delivery) ||
+      !(deliveryRecord(delivery) || legacyDeliveryRecord(delivery)) ||
       delivery.sequence > value.eventSequence ||
       delivery.eventId !== `${id}:${delivery.sequence}`
     ) {

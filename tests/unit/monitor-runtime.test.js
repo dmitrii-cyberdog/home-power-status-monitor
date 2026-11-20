@@ -137,3 +137,80 @@ test('interval task coalesces manual work and stop drains accepted persistence',
   await stopped
   await task.destroy()
 })
+
+test('recurring status follows each home cadence and uses authorized cached status', async t => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'monitor-periodic-'),
+  )
+
+  t.mock.timers.enable({ apis: ['setInterval'] })
+
+  const homes = [
+    { id: '1', name: 'Two', timeZone: 'GMT+2', notificationIntervalMinutes: 2 },
+    { id: '2', name: 'Five', notificationIntervalMinutes: 5 },
+    { id: '3', name: 'Disabled', notificationIntervalMinutes: 0 },
+  ]
+
+  let now = 0
+  let polls = 0
+
+  const runtime = await createMonitorRuntime({
+    config: {
+      monitor: { homes, intervalSeconds: 120 },
+      botSettings: { accessSecret: 'secret' },
+    },
+    directory,
+    now: () => now,
+    monitor: {
+      async check() {
+        polls++
+      },
+    },
+  })
+
+  t.after(async () => {
+    runtime.stopNotifications()
+    await runtime.drainNotifications()
+    await runtime.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  await runtime.access.authorize('7', 'secret', 'en')
+
+  for (const home of homes) {
+    await runtime.access.setSubscription('7', home.id, true)
+  }
+
+  const sent = []
+
+  runtime.setTelegramApi({
+    async sendMessage(chatId, text, options) {
+      assert.equal(chatId, '7')
+      assert.deepEqual(options, { parse_mode: 'HTML' })
+      assert.match(text, /unknown/i)
+      sent.push(text.match(/<b>([^<]+)<\/b>/)[1])
+    },
+  })
+
+  runtime.startNotifications()
+
+  await runtime.drainNotifications()
+
+  const tick = async minutes => {
+    now += minutes * 60000
+    t.mock.timers.tick(minutes * 60000)
+    await runtime.drainNotifications()
+  }
+
+  assert.deepEqual(sent, [])
+  await tick(1)
+  assert.deepEqual(sent, [])
+  await tick(1)
+  assert.deepEqual(sent, ['Two'])
+  await tick(8)
+  assert.deepEqual(sent, ['Two', 'Two', 'Five'])
+  await runtime.access.setSubscription('7', '1', false)
+  await tick(2)
+  assert.deepEqual(sent, ['Two', 'Two', 'Five'])
+  assert.equal(polls, 0)
+})

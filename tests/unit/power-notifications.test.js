@@ -322,7 +322,12 @@ test('a failed subscription write cannot let drain abandon other accepted sends'
   await draining
 })
 
-const runtimeFixture = async t => {
+const runtimeFixture = async (
+  t,
+  homeOptions = {},
+  now,
+  intervalSeconds = 60,
+) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-guard-'))
 
   let store
@@ -332,13 +337,14 @@ const runtimeFixture = async t => {
   const runtime = await createMonitorRuntime({
     config: {
       monitor: {
-        homes: [{ id: '1', name: 'Home' }],
+        homes: [{ id: '1', name: 'Home', ...homeOptions }],
         failedChecks: 3,
-        intervalSeconds: 60,
+        intervalSeconds,
       },
       botSettings: { accessSecret: 'secret' },
     },
     directory,
+    now,
     monitor: {},
     log: { error: message => errors.push(message) },
     openStore: async options => {
@@ -485,4 +491,80 @@ test('an alert waiting in the Telegram queue uses a newly selected chat language
   assert.match(sent[0].payload.text, /\p{Script=Cyrillic}/u)
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
   assert.deepEqual(errors, [])
+})
+
+test('queued recurring updates use the current locale and discard an obsolete subscription', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+
+  let now = 0
+
+  const { access, errors, runtime, sent, store } = await runtimeFixture(
+    t,
+    { timeZone: 'GMT+2', notificationIntervalMinutes: 1 },
+    () => now,
+  )
+
+  runtime.startNotifications()
+  await runtime.drainNotifications()
+
+  for (const change of [
+    () => access.setLocale('7', 'ru'),
+    async () => {
+      await access.setSubscription('7', '1', false)
+      await access.setSubscription('7', '1', true)
+    },
+  ]) {
+    const release = blockQueue()
+
+    try {
+      now += 60000
+      t.mock.timers.tick(60000)
+      await new Promise(resolve => {
+        setImmediate(resolve)
+      })
+      await change()
+    } finally {
+      await release()
+    }
+
+    await runtime.drainNotifications()
+  }
+
+  assert.equal(sent.length, 2)
+  assert.equal(sent[1].payload.parse_mode, 'HTML')
+  assert.match(sent[1].payload.text, /\p{Script=Cyrillic}/u)
+  assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+  assert.deepEqual(errors, [])
+})
+
+test('recurring ticks leave durable alerts for their configured polling cadence', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+
+  let now = 0
+
+  const { runtime, sent, store } = await runtimeFixture(
+    t,
+    { notificationIntervalMinutes: 1 },
+    () => now,
+    300,
+  )
+
+  const [delivery] = store.readHome('1').pendingDeliveries
+
+  runtime.startNotifications()
+  await runtime.drainNotifications()
+
+  await store.updateHome('1', record => {
+    record.pendingDeliveries = [delivery]
+
+    return record
+  })
+
+  now += 60000
+  t.mock.timers.tick(60000)
+  await runtime.drainNotifications()
+
+  assert.equal(sent.length, 2)
+  assert.equal(sent.at(-1).payload.parse_mode, 'HTML')
+  assert.equal(store.readHome('1').pendingDeliveries.length, 1)
 })

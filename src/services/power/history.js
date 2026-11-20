@@ -69,6 +69,17 @@ export const reduceHomeObservation = (
       }
 
       if (status === 'off' || !baseline) {
+        const precedingStateMs = time - Date.parse(record.stateSince)
+
+        const history = {
+          previousOnAt: record.lastOn?.detectedAt ?? null,
+          previousOffAt: record.lastOff?.detectedAt ?? null,
+          precedingStateMs:
+            next.continuous && time >= highWater && precedingStateMs >= 0
+              ? precedingStateMs
+              : null,
+        }
+
         next.eventSequence++
 
         for (const recipient of recipients) {
@@ -84,13 +95,14 @@ export const reduceHomeObservation = (
             detectedAt: observedAt, // UTC time the event was detected.
             baseline, // True for an outage on the first decisive observation.
             uncertain: !next.continuous, // Whether sampling could establish continuity at detection.
+            history,
             ...recipient, // Chat ID, access generation, subscription ID and legacy locale snapshot.
           })
         }
       }
 
-      // A newly detected episode starts continuity; the event retains gap evidence.
-      next.continuous = true
+      // A newly detected episode starts continuity unless its timestamp moved backward.
+      next.continuous = time >= highWater
     }
 
     next.lastDecisiveStatus = status
@@ -121,6 +133,7 @@ export const projectHomeStatus = (
   return structuredClone({
     id: home.id,
     name: home.name,
+    timeZone: home.timeZone,
     status: current && !stale ? record.sample.status : 'unknown',
     stale,
     observedAt: record.sample?.observedAt ?? null,

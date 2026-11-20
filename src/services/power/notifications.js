@@ -15,11 +15,46 @@ export const createPowerNotifications = ({
   homes,
   send,
   renderAlert,
+  renderStatus,
+  getStatuses,
+  now = Date.now,
   log,
 }) => {
   let stopped = false
 
   let pending = null
+
+  const statusCadences = new Map(
+    homes
+      .filter(home => home.notificationIntervalMinutes > 0)
+      .map(home => [
+        home.id,
+        { intervalMs: home.notificationIntervalMinutes * 60000 },
+      ]),
+  )
+
+  const dueHomes = () => {
+    const due = new Set()
+
+    if (!statusCadences.size) {
+      return due
+    }
+
+    const time = now()
+
+    for (const [homeId, cadence] of statusCadences) {
+      cadence.anchor ??= time
+
+      const elapsed = time - cadence.anchor
+
+      if (elapsed >= cadence.intervalMs) {
+        cadence.anchor = time - (elapsed % cadence.intervalMs)
+        due.add(homeId)
+      }
+    }
+
+    return due
+  }
 
   const remove = (homeId, delivery) =>
     store.updateHome(homeId, record => {
@@ -34,7 +69,7 @@ export const createPowerNotifications = ({
       return record
     })
 
-  const sendDelivery = async (home, delivery) => {
+  const sendDelivery = async (home, delivery, status) => {
     const { chatId } = delivery
 
     while (!stopped) {
@@ -60,12 +95,21 @@ export const createPowerNotifications = ({
       }
 
       try {
-        for (const text of renderAlert(delivery, home, locale)) {
+        const messages = status
+          ? renderStatus(status, home, locale)
+          : renderAlert(delivery, home, locale)
+
+        for (const text of messages) {
           if (stopped || !access.isDeliveryAllowed(delivery)) {
             return false
           }
 
-          await send(chatId, text, canDispatch)
+          await send(
+            chatId,
+            text,
+            canDispatch,
+            status ? { parse_mode: 'HTML' } : undefined,
+          )
 
           started = true
         }
@@ -81,25 +125,85 @@ export const createPowerNotifications = ({
     return false
   }
 
-  const pass = async () => {
+  const dispatch = async (home, delivery, status) => {
+    try {
+      if (!(await sendDelivery(home, delivery, status))) {
+        return false
+      }
+
+      if (!status) {
+        await remove(home.id, delivery)
+      }
+
+      return true
+    } catch (error) {
+      // A send refused at dispatch is a stale alert, not a failure.
+      if (isTelegramSendSkipped(error)) {
+        if (!status) {
+          await remove(home.id, delivery)
+        }
+
+        return true
+      }
+
+      if (unavailableChat(error)) {
+        await access.disableSubscriptions(delivery)
+      }
+
+      log?.error(
+        status
+          ? 'Periodic power status delivery failed'
+          : 'Power alert delivery failed',
+        {
+          homeId: home.id,
+          eventId: delivery.eventId,
+        },
+      )
+
+      return false
+    }
+  }
+
+  const pass = async includeAlerts => {
     const pairs = []
+
+    const due = dueHomes()
+
+    const statuses = due.size
+      ? new Map(getStatuses().map(status => [status.id, status]))
+      : new Map()
+
+    const registry = due.size ? store.readChats() : null
 
     for (const home of homes) {
       const groups = new Map()
 
-      for (const delivery of store.readHome(home.id).pendingDeliveries) {
-        if (!groups.has(delivery.chatId)) {
-          groups.set(delivery.chatId, [])
+      const groupFor = chatId => {
+        if (!groups.has(chatId)) {
+          groups.set(chatId, { home, deliveries: [] })
         }
 
-        groups.get(delivery.chatId).push(delivery)
+        return groups.get(chatId)
       }
 
-      for (const deliveries of groups.values()) {
-        pairs.push({
-          home,
-          deliveries: deliveries.sort((a, b) => a.sequence - b.sequence),
-        })
+      if (includeAlerts) {
+        for (const delivery of store.readHome(home.id).pendingDeliveries) {
+          groupFor(delivery.chatId).deliveries.push(delivery)
+        }
+      }
+
+      if (due.has(home.id)) {
+        for (const recipient of access.recipients(home.id, registry)) {
+          groupFor(recipient.chatId).periodic = {
+            delivery: { ...recipient, eventId: `${home.id}:status` },
+            status: statuses.get(home.id),
+          }
+        }
+      }
+
+      for (const group of groups.values()) {
+        group.deliveries.sort((a, b) => a.sequence - b.sequence)
+        pairs.push(group)
       }
     }
 
@@ -107,36 +211,16 @@ export const createPowerNotifications = ({
 
     const worker = async () => {
       while (!stopped && index < pairs.length) {
-        const { home, deliveries } = pairs[index++]
+        const { home, deliveries, periodic } = pairs[index++]
 
         for (const delivery of deliveries) {
-          if (stopped) {
+          if (stopped || !(await dispatch(home, delivery))) {
             break
           }
+        }
 
-          try {
-            if (!(await sendDelivery(home, delivery))) {
-              break
-            }
-
-            await remove(home.id, delivery)
-          } catch (error) {
-            // A send refused at dispatch is a stale alert, not a failure.
-            if (isTelegramSendSkipped(error)) {
-              await remove(home.id, delivery)
-              continue
-            }
-
-            if (unavailableChat(error)) {
-              await access.disableSubscriptions(delivery)
-            }
-
-            log?.error('Power alert delivery failed', {
-              homeId: home.id,
-              eventId: delivery.eventId,
-            })
-            break
-          }
+        if (periodic && !stopped) {
+          await dispatch(home, periodic.delivery, periodic.status)
         }
       }
     }
@@ -151,12 +235,12 @@ export const createPowerNotifications = ({
   }
 
   return {
-    flush() {
+    flush({ includeAlerts = true } = {}) {
       if (stopped || !send) {
         return Promise.resolve()
       }
 
-      pending ??= pass().finally(() => {
+      pending ??= pass(includeAlerts).finally(() => {
         pending = null
       })
 
