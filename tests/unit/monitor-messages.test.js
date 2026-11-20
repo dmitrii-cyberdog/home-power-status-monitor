@@ -50,11 +50,11 @@ test('power alerts display the localized state, home and timestamp on separate l
     uncertain: false,
   }
 
-  for (const [locale, state, heading] of [
-    ['en', 'off', '⚡ ❌ Power outage detected'],
-    ['en', 'on', '⚡ ✅ Power restored'],
-    ['ru', 'off', '⚡ ❌ Обнаружено отключение электричества'],
-    ['ru', 'on', '⚡ ✅ Электричество восстановлено'],
+  for (const [locale, state, heading, localTime] of [
+    ['en', 'off', '⚡ ❌ Power outage detected', 'local time'],
+    ['en', 'on', '⚡ ✅ Power restored', 'local time'],
+    ['ru', 'off', '⚡ ❌ Обнаружено отключение электричества', 'местн. вр.'],
+    ['ru', 'on', '⚡ ✅ Электричество восстановлено', 'местн. вр.'],
   ]) {
     assert.deepEqual(
       messages.renderPowerAlert(
@@ -62,7 +62,7 @@ test('power alerts display the localized state, home and timestamp on separate l
         home({ name: 'Home & Co' }),
         translate(locale),
       ),
-      [`${heading}\n\n🏠 Home & Co\n🕒 06.03.2026 04:05:09 UTC`],
+      [`${heading}\n\n🏠 Home & Co\n🕒 06.03.2026 04:05:09 (${localTime})`],
     )
   }
 })
@@ -94,14 +94,17 @@ test('brief status separates each heading and marks the current power state', ()
 
   const [brief] = renderStatusMessages(homes, t)
 
-  assert.match(brief, /<b>North<\/b>\n\n<b>⚡ ✅ Power on/)
-  assert.match(brief, /────────\n\n<b>South<\/b>\n\n<b>⚡ ❌ Power off/)
-  assert.match(brief, /────────\n\n<b>West<\/b>\n\n<b>⚡ Power status unknown/)
+  assert.match(brief, /<b>North<\/b>\n\n<b>⚡ Power on ✅/)
+  assert.match(brief, /────────\n\n<b>South<\/b>\n\n<b>⚡ Power off ❌/)
+  assert.match(
+    brief,
+    /────────\n\n<b>West<\/b>\n\n<b>⚡ Power status unknown ❓/,
+  )
 
   const [full] = messages.renderFullStatusMessages(homes, t)
 
-  assert.match(full, /<b>North<\/b>\n<b>Power on/)
-  assert.doesNotMatch(full, /⚡|✅|❌/)
+  assert.match(full, /<b>North<\/b>\n\n<b>⚡ Power on ✅/)
+  assert.match(full, /<b>📊 Cumulative sampled estimates<\/b>/)
 })
 
 test('brief status shows only current state, duration and opposite detection', () => {
@@ -110,15 +113,15 @@ test('brief status shows only current state, duration and opposite detection', (
     '\n',
   )
 
-  assert.match(on, /Power on for 2 days 3 hours/)
+  assert.match(on, /⏱ For 2 days 3 hours/)
   assert.match(on, /since detection/)
   assert.match(on, /Last power off: Not observed/)
   assert.doesNotMatch(on, /Cumulative|outages|Last observation|auth_failed/)
 
   const off = renderStatusMessages([home({ status: 'off' })], t).join('\n')
 
-  assert.match(off, /Power off for 1 minute/)
-  assert.match(off, /Last power on: 1970-01-01 00:00 UTC/)
+  assert.match(off, /⏱ For 1 minute/)
+  assert.match(off, /✅ Last power on: 01\.01\.1970 00:00 \(local time\)/)
 })
 
 test('brief duration boundaries use readable localized units', () => {
@@ -148,7 +151,7 @@ test('unknown and interrupted status never claim a continuous duration', () => {
   ]) {
     const result = renderStatusMessages([home(patch)], t).join('')
 
-    assert.doesNotMatch(result, /Power (on|off) for/)
+    assert.doesNotMatch(result, /⏱/)
     assert.match(
       result,
       patch.status === 'unknown'
@@ -186,7 +189,7 @@ test('full status formats diagnostics and escapes every dynamic field', () => {
           : 'Время с конца учтённого периода',
       ),
     )
-    assert.match(result, /1970-01-01 00:00 UTC/)
+    assert.match(result, /01\.01\.1970 00:00 \((local time|местн\. вр\.)\)/)
     assert.doesNotMatch(result, /monitor_/)
   }
 })
@@ -256,7 +259,7 @@ test('a header exactly at the message budget never produces an empty reply', () 
   )
 
   assert.equal(result[0].length, 4000)
-  assert.match(result[1], /^<b>⚡ ✅ Power on/)
+  assert.match(result[1], /^<b>⚡ Power on ✅/)
   assert.ok(
     result.every(message => message.length > 0 && message.length <= 4000),
   )
@@ -315,7 +318,7 @@ test('locale keys and variables agree and status renders both languages', async 
       key => i18n.t(locale, key),
     ).join('')
 
-    assert.match(result, /UTC/)
+    assert.match(result, /01\.01\.1970 00:00 \((local time|местн\. вр\.)\)/)
     assert.doesNotMatch(result, /monitor_/)
   }
 })
@@ -339,7 +342,7 @@ test('notification timestamps use the fixed home offset across midnight', t => {
     translate('en'),
   )
 
-  assert.match(alert, /21\.11\.2026 01:15:00 GMT\+2/)
+  assert.match(alert, /21\.11\.2026 01:15:00 \(local time\)/)
 
   const [status] = messages.renderRecurringStatusMessages(
     home({
@@ -350,7 +353,7 @@ test('notification timestamps use the fixed home offset across midnight', t => {
     translate('en'),
   )
 
-  assert.match(status, /21\.11\.2026 01:15:00 GMT\+2/)
+  assert.match(status, /21\.11\.2026 01:15:00 \(local time\)/)
 })
 
 test('transition alerts show localized episode history and omit unsupported durations', () => {
@@ -368,7 +371,10 @@ test('transition alerts show localized episode history and omit unsupported dura
     precedingStateMs: 5400000,
   })
 
-  assert.match(restored, /Outage detected at: 20\.11\.2026 10:00:00 GMT\+2/)
+  assert.match(
+    restored,
+    /🔌 Outage detected at: 20\.11\.2026 10:00:00 \(local time\)/,
+  )
   assert.match(restored, /Observed time without power: 1 hour 30 minutes/)
 
   const outage = render('off', '2026-11-20T12:00:00.000Z', {
@@ -379,7 +385,7 @@ test('transition alerts show localized episode history and omit unsupported dura
   assert.match(outage, /Observed time with power: 2 hours 30 minutes/)
   assert.match(
     outage,
-    /Previous outage detected at: 20\.11\.2026 10:00:00 GMT\+2/,
+    /📅 Previous outage detected at: 20\.11\.2026 10:00:00 \(local time\)/,
   )
   assert.match(outage, /Time between outage detections: 4 hours/)
 
@@ -390,7 +396,7 @@ test('transition alerts show localized episode history and omit unsupported dura
     'ru',
   )
 
-  assert.match(uncertain, /20\.11\.2026 10:00:00 GMT\+2/)
+  assert.match(uncertain, /20\.11\.2026 10:00:00 \(местн\. вр\.\)/)
   assert.doesNotMatch(uncertain, /Время с электричеством|Между обнаружениями/)
 })
 
@@ -417,14 +423,14 @@ test('manual status timestamps follow each home offset, including device observa
 
   const [brief] = renderStatusMessages([first, second], translate('en'))
 
-  assert.match(brief, /Last power off: 2026-11-21 01:15 GMT\+2/)
-  assert.match(brief, /2026-11-20 19:45 GMT-3:30/)
-  assert.doesNotMatch(brief, / UTC/)
+  assert.match(brief, /Last power off: 21\.11\.2026 01:15 \(local time\)/)
+  assert.match(brief, /Last check: 20\.11\.2026 19:45 \(local time\)/)
+  assert.doesNotMatch(brief, /GMT|UTC/)
 
   const [full] = messages.renderFullStatusMessages([first], translate('en'))
 
-  assert.equal(full.match(/2026-11-21 01:15 GMT\+2/g)?.length, 6)
-  assert.doesNotMatch(full, / UTC/)
+  assert.equal(full.match(/21\.11\.2026 01:15 \(local time\)/g)?.length, 6)
+  assert.doesNotMatch(full, /GMT|UTC/)
 })
 
 test('brief status distinguishes outage detection from the last confirmation', () => {
@@ -444,15 +450,15 @@ test('brief status distinguishes outage detection from the last confirmation', (
     translate('en'),
   )
 
-  assert.match(unknown, /Last known state: Power off/)
-  assert.match(unknown, /Last confirmed: 2026-11-20 18:50 GMT\+2/)
+  assert.match(unknown, /⚡ Last known state:\n<b>Power off ❌<\/b>/)
+  assert.match(unknown, /🔄 Last check: 20\.11\.2026 18:50 \(local time\)/)
   assert.match(unknown, /The current state could not be confirmed/)
   assert.doesNotMatch(unknown, /Power status unknown/)
-  assert.match(unknown, /State detected at: 2026-11-20 17:58 GMT\+2/)
+  assert.match(unknown, /🕒 Detected: 20\.11\.2026 17:58 \(local time\)/)
 
   const [off] = renderStatusMessages([outage], translate('en'))
 
-  assert.match(off, /State detected at: 2026-11-20 17:58 GMT\+2/)
+  assert.match(off, /🕒 Detected: 20\.11\.2026 17:58 \(local time\)/)
   assert.doesNotMatch(off, /Power off for/)
 })
 
@@ -471,11 +477,20 @@ test('Russian brief status distinguishes a confirmed outage from the last known 
     translate('ru'),
   )
 
-  assert.match(current, /⚡ ❌ Электричества нет/)
-  assert.match(current, /Состояние обнаружено: 2026-11-20 18:58 GMT\+3/)
-  assert.match(inconclusive, /По последним данным: Электричества нет/)
-  assert.match(inconclusive, /Состояние обнаружено: 2026-11-20 18:58 GMT\+3/)
-  assert.match(inconclusive, /Последнее подтверждение: 2026-11-20 20:12 GMT\+3/)
+  assert.match(current, /⚡ Электричества нет ❌/)
+  assert.match(current, /🕒 Обнаружено: 20\.11\.2026 18:58 \(местн\. вр\.\)/)
+  assert.match(
+    inconclusive,
+    /⚡ По последним данным:\n<b>Электричества нет ❌<\/b>/,
+  )
+  assert.match(
+    inconclusive,
+    /🕒 Обнаружено: 20\.11\.2026 18:58 \(местн\. вр\.\)/,
+  )
+  assert.match(
+    inconclusive,
+    /🔄 Последняя проверка: 20\.11\.2026 20:12 \(местн\. вр\.\)/,
+  )
   assert.match(inconclusive, /Подтвердить текущее состояние не удалось/)
   assert.doesNotMatch(inconclusive, /Состояние электричества неизвестно|уже /)
 })
@@ -500,9 +515,15 @@ test('inconclusive brief status shows the current EZVIZ device reading', () => {
   const [english] = renderStatusMessages([pending], translate('en'))
   const [russian] = renderStatusMessages([pending], translate('ru'))
 
-  assert.match(english, /EZVIZ now: Camera — Offline \(1 of 3 checks\)/)
+  assert.match(
+    english,
+    /📷 Device Camera \(EZVIZ\) now: Offline 🔌 \(1 of 3 checks ⌛\)/,
+  )
   assert.doesNotMatch(english, /could not be confirmed/)
-  assert.match(russian, /EZVIZ сейчас: Camera — Не в сети \(1 из 3 проверок\)/)
+  assert.match(
+    russian,
+    /📷 Устройство Camera \(EZVIZ\) сейчас: Не в сети 🔌 \(1 из 3 проверок ⌛\)/,
+  )
   assert.doesNotMatch(russian, /Подтвердить текущее состояние не удалось/)
 
   const [failed] = renderStatusMessages(
@@ -511,5 +532,5 @@ test('inconclusive brief status shows the current EZVIZ device reading', () => {
   )
 
   assert.match(failed, /The current state could not be confirmed/)
-  assert.doesNotMatch(failed, /EZVIZ now/)
+  assert.doesNotMatch(failed, /\(EZVIZ\) now/)
 })

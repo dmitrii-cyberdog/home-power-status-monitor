@@ -148,9 +148,9 @@ test('replying to a notification prompt saves the setting and confirms it', asyn
   assert.equal(replies.length, 1)
   assert.equal(access.recipients('1', store.readChats()).length, 0)
   await send('Missing', prompt.message)
-  assert.equal(replies.at(-1).payload.text, 'Home not found.')
+  assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
   await send(' family home ', prompt.message)
-  assert.equal(replies.at(-1).payload.text, 'Notifications enabled.')
+  assert.equal(replies.at(-1).payload.text, '🔔 Notifications enabled.')
   assert.equal(
     access.recipients('1', store.readChats())[0].chatId,
     String(chat.id),
@@ -162,13 +162,13 @@ test('replying to a notification prompt saves the setting and confirms it', asyn
   assert.equal(prompt.payload.reply_parameters.message_id, 1)
 
   await send('/on_notification@power_test_bot Family Home')
-  assert.equal(replies.at(-1).payload.text, 'Notifications already enabled.')
+  assert.equal(replies.at(-1).payload.text, '🔔 Notifications already enabled.')
   await send('/off_notification@power_test_bot')
 
   const disablePrompt = replies.at(-1).message
 
   await send('Family Home', disablePrompt)
-  assert.equal(replies.at(-1).payload.text, 'Notifications disabled.')
+  assert.equal(replies.at(-1).payload.text, '🔕 Notifications disabled.')
   assert.equal(access.recipients('1', store.readChats()).length, 0)
 
   const rotatedAccess = createChatAccess({ store, homes, secret: 'rotated' })
@@ -177,7 +177,7 @@ test('replying to a notification prompt saves the setting and confirms it', asyn
   await send('Family Home', prompt.message)
   assert.equal(
     replies.at(-1).payload.text,
-    'This group is not authorized. Ask a bot admin to approve it from a private chat.',
+    '🔒 This group is not authorized. Ask a bot admin to approve it from a private chat.',
   )
   assert.equal(rotatedAccess.recipients('1', store.readChats()).length, 0)
 })
@@ -199,13 +199,13 @@ test('only a named private status reply offers a subscription button', async t =
   assert.ok(replies.length > 1)
   assert.ok(replies.slice(0, -1).every(({ payload }) => !payload.reply_markup))
   assert.deepEqual(replies.at(-1).payload.reply_markup.inline_keyboard, [
-    [{ text: 'Enable notifications', callback_data: 'subscription:on:1' }],
+    [{ text: '🔔 Enable notifications', callback_data: 'subscription:on:1' }],
   ])
 
   await access.setSubscription('7', '1', true)
   await send(`/status ${name.trim()}`)
   assert.deepEqual(replies.at(-1).payload.reply_markup.inline_keyboard, [
-    [{ text: 'Disable notifications', callback_data: 'subscription:off:1' }],
+    [{ text: '🔕 Disable notifications', callback_data: 'subscription:off:1' }],
   ])
 
   const group = await notificationFixture(t)
@@ -250,20 +250,20 @@ test('private status callbacks confirm saved actions and reject invalid targets'
   }
 
   await click(card, 'subscription:on:1')
-  assert.equal(replies.at(-2).payload.text, 'Notifications enabled.')
+  assert.equal(replies.at(-2).payload.text, '🔔 Notifications enabled.')
   assert.equal(replies.at(-1).method, 'editMessageReplyMarkup')
   assert.equal(access.recipients('1', store.readChats()).length, 1)
 
   const markup = replies.at(-1).payload.reply_markup
 
   assert.deepEqual(markup.inline_keyboard, [
-    [{ text: 'Disable notifications', callback_data: 'subscription:off:1' }],
+    [{ text: '🔕 Disable notifications', callback_data: 'subscription:off:1' }],
   ])
   await click({ ...card, reply_markup: markup }, 'subscription:on:1')
   assert.equal(replies.at(-1).method, 'answerCallbackQuery')
-  assert.equal(replies.at(-1).payload.text, 'Notifications already enabled.')
+  assert.equal(replies.at(-1).payload.text, '🔔 Notifications already enabled.')
   await click({ ...card, reply_markup: markup }, 'subscription:off:1')
-  assert.equal(replies.at(-2).payload.text, 'Notifications disabled.')
+  assert.equal(replies.at(-2).payload.text, '🔕 Notifications disabled.')
   assert.equal(access.recipients('1', store.readChats()).length, 0)
 
   const rotated = createChatAccess({ store, homes, secret: 'rotated' })
@@ -304,7 +304,10 @@ test('admin help is restricted to configured admins in private chats', async t =
   })
 
   await ordinary.send('/admin')
-  assert.equal(ordinary.replies.at(-1)?.payload.text, 'Admin access required.')
+  assert.equal(
+    ordinary.replies.at(-1)?.payload.text,
+    '🔒 Admin access required.',
+  )
 
   const group = await notificationFixture(t, { admins: [7] })
 
@@ -322,7 +325,10 @@ test('only a configured admin in a private chat can clear registry records', asy
 
   await ordinary.access.authorize('7', 'test-only', 'en')
   await ordinary.send('/clear_chats all')
-  assert.equal(ordinary.replies.at(-1)?.payload.text, 'Admin access required.')
+  assert.equal(
+    ordinary.replies.at(-1)?.payload.text,
+    '🔒 Admin access required.',
+  )
   assert.equal(ordinary.access.isAuthorized('7'), true)
 
   const group = await notificationFixture(t, { admins: [7] })
@@ -355,7 +361,7 @@ test('only a configured admin in a private chat can clear registry records', asy
   assert.equal(access.isAuthorized('-1007'), false)
   assert.equal(access.isAuthorized('8'), true)
   await send('/clear_chats -1007')
-  assert.equal(replies.at(-1).payload.text, 'Chat record not found.')
+  assert.equal(replies.at(-1).payload.text, '🔍 Chat record not found.')
   await send('/clear_chats all')
   assert.match(replies.at(-1).payload.text, /Chat records removed:.*1/)
   assert.equal(access.isAuthorized('8'), false)
@@ -384,7 +390,7 @@ test('clearing a chat during a status refresh revokes access to the result', asy
   await handling
   assert.deepEqual(
     replies.map(({ payload }) => payload.text),
-    ['Authorize this chat with /secret <value> first.'],
+    ['🔒 Authorize this chat with /secret <value> first.'],
   )
 })
 
@@ -423,7 +429,7 @@ test('an eligible guarded status sends every chunk through the queue', async t =
   assert.ok(sentTexts(replies).length > 1)
   assert.ok(replies.every(({ payload }) => !('signal' in payload)))
   assert.deepEqual(replies.at(-1).payload.reply_markup.inline_keyboard, [
-    [{ text: 'Enable notifications', callback_data: 'subscription:on:1' }],
+    [{ text: '🔔 Enable notifications', callback_data: 'subscription:on:1' }],
   ])
 })
 
@@ -808,7 +814,7 @@ test('private chats still authorize with the secret', async t => {
 
   await send('/secret test-only')
   assert.equal(access.isAuthorized('7'), true)
-  assert.equal(replies[0].payload.text, 'Chat authorized.')
+  assert.equal(replies[0].payload.text, '✅ Chat authorized.')
   assert.doesNotMatch(JSON.stringify(replies), /test-only/)
 })
 
@@ -821,7 +827,10 @@ test('only a configured admin in a private chat can approve a group', async t =>
   })
 
   await ordinary.send('/authorize_group -1007')
-  assert.equal(ordinary.replies.at(-1).payload.text, 'Admin access required.')
+  assert.equal(
+    ordinary.replies.at(-1).payload.text,
+    '🔒 Admin access required.',
+  )
   assert.equal(ordinary.access.isAuthorized('-1007'), false)
 
   const group = await notificationFixture(t, { admins: [7] })
@@ -852,7 +861,7 @@ test('only a configured admin in a private chat can approve a group', async t =>
   assert.deepEqual(store.readChats().chats, {})
 
   await send('/authorize_group -1007')
-  assert.equal(replies.at(-1).payload.text, 'Group authorized.')
+  assert.equal(replies.at(-1).payload.text, '✅ Group authorized.')
   assert.equal(access.isAuthorized('-1007'), true)
 
   await access.setSubscription('-1007', '1', true)
@@ -869,7 +878,7 @@ test('group approval is refused while protected access is disabled', async t => 
   })
 
   await send('/authorize_group -1007')
-  assert.equal(replies.at(-1).payload.text, 'Protected access is disabled.')
+  assert.equal(replies.at(-1).payload.text, '🚫 Protected access is disabled.')
   assert.equal(access.isAuthorized('-1007'), false)
 })
 
@@ -891,7 +900,7 @@ test('language commands persist a chat preference and keep group replies in that
 
   await send('/ru@power_test_bot', undefined, english)
   assert.equal(replies.length, 1)
-  assert.equal(replies[0].payload.text, 'Язык чата: русский.')
+  assert.equal(replies[0].payload.text, '🌐 Язык чата: русский.')
   assert.equal(store.readChats().chats[String(chat.id)].locale, 'ru')
   assert.equal(access.isAuthorized(String(chat.id)), false)
 
@@ -909,12 +918,12 @@ test('language commands persist a chat preference and keep group replies in that
 
   await send('/en@power_test_bot', undefined, russian)
   assert.equal(replies.length, 5)
-  assert.equal(replies.at(-1).payload.text, 'Chat language: English.')
+  assert.equal(replies.at(-1).payload.text, '🌐 Chat language: English.')
   await send('/status@power_test_bot', undefined, russian)
   assert.match(replies.at(-1).payload.text, /unknown/i)
   assert.equal(access.isSubscribed(String(chat.id), '1'), true)
   await send('Family Home', russianPrompt, russian)
-  assert.equal(replies.at(-1).payload.text, 'Notifications disabled.')
+  assert.equal(replies.at(-1).payload.text, '🔕 Notifications disabled.')
   assert.equal(access.isSubscribed(String(chat.id), '1'), false)
 })
 

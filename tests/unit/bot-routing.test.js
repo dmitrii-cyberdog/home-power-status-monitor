@@ -80,7 +80,7 @@ test('addressed group help and start explain setup before authorization', async 
     assert.match(replies[0].payload.text, /\/status@power_test_bot/)
     assert.match(
       replies[0].payload.text,
-      /\n\/status \[home name\].*\n\/status_full/,
+      /\n⚡ \/status \[home name\].*\n📊 \/status_full/,
     )
   }
 })
