@@ -123,6 +123,19 @@ const renderBriefStatus = (statuses, t, format) =>
       timestamp,
     )
 
+    const lastState =
+      home.status === 'unknown' ? home.lastInferredStatus : home.status
+
+    if (home.status === 'unknown' || home.durationMs == null) {
+      const episode = lastState === 'off' ? home.lastOff : home.lastOn
+
+      if ((lastState === 'off' || lastState === 'on') && episode) {
+        details.push([
+          `${translate(`monitor_last_${lastState}`)}: ${statusEpisode(episode, translate, timestamp)}`,
+        ])
+      }
+    }
+
     const icon = { on: '⚡ ✅', off: '⚡ ❌', unknown: '⚡' }[home.status]
 
     return [heading, [''], [`${icon} ${state}`, tag], ...details]

@@ -98,23 +98,21 @@ italic notes, spacing and dividers. Each split message has complete markup.
 
 Scheduled ticks and both status commands share one cadence. The minimum interval
 is `max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds. A request first joins any
-in-flight round. Before the first round in a process, it polls only when at
-least one home's persisted `sample.observedAt` is missing, future-dated or at
-least the minimum interval old; recent unknown observations also count as
-updates. The persisted timestamp survives restart; a failed write never advances
-it. After a round has started in this process, the next round may start once the
-minimum interval less one second of scheduler slack has elapsed since the
-previous round started, measured with a monotonic clock, so wall-clock jumps and
-provider latency neither skip ticks nor shorten the cadence. A round's start
-time is recorded before the provider call, so failed provider rounds or writes
-still wait out the cooldown instead of retrying in a tight loop. Right after a
-restart with fresh persisted samples, status can show unknown power for up to
-the minimum interval because those samples belong to the previous run. Other
-requests reply from the latest committed results and their existing timestamps
-without calling the provider or writing storage, so cached replies never advance
-inference or add alerts. Stale status requests still poll when scheduled polling
-is disabled. Only the local manual launcher forces a round regardless of
-cadence; Telegram commands cannot.
+in-flight round. The first check in a process polls even when a persisted
+observation is recent. The saved detection and last confirmation survive a
+restart. The brief reply includes the saved episode detection when current
+status or the continuous duration is unknown. If current power is unknown, the
+last confirmed state and its observation time appear separately. After a round
+has started in this process, the next round may start once the minimum interval
+less one second of scheduler slack has elapsed since the previous round started,
+measured with a monotonic clock, so wall-clock jumps and provider latency
+neither skip ticks nor shorten the cadence. A round's start time is recorded
+before the provider call, so failed provider rounds or writes still wait out the
+cooldown. Other requests reply from the latest committed results without calling
+the provider or writing storage, so cached replies never advance inference or
+add alerts. Stale status requests still poll when scheduled polling is disabled.
+Only the local manual launcher forces a round regardless of cadence; Telegram
+commands cannot.
 
 In private groups use `/status@BotUsername Family Home` and corresponding
 addressed forms for other commands. Bare protected group commands and unrelated

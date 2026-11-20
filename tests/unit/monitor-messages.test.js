@@ -391,3 +391,29 @@ test('manual status timestamps follow each home offset, including device observa
   assert.equal(full.match(/2026-11-21 01:15 GMT\+2/g)?.length, 6)
   assert.doesNotMatch(full, / UTC/)
 })
+
+test('brief status distinguishes outage detection from the last confirmation', () => {
+  const lastOff = { detectedAt: '2026-11-20T15:58:43.000Z', baseline: false }
+
+  const outage = home({
+    status: 'off',
+    timeZone: 'GMT+2',
+    durationMs: null,
+    lastOff,
+    lastInferredStatus: 'off',
+    lastInferredAt: '2026-11-20T16:50:00.000Z',
+  })
+
+  const [unknown] = renderStatusMessages(
+    [{ ...outage, status: 'unknown' }],
+    translate('en'),
+  )
+
+  assert.match(unknown, /Last confirmed: Power off \(2026-11-20 18:50 GMT\+2\)/)
+  assert.match(unknown, /Last power off: 2026-11-20 17:58 GMT\+2/)
+
+  const [off] = renderStatusMessages([outage], translate('en'))
+
+  assert.match(off, /Last power off: 2026-11-20 17:58 GMT\+2/)
+  assert.doesNotMatch(off, /Power off for/)
+})

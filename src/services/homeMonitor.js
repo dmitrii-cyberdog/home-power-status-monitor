@@ -37,18 +37,10 @@ export const createHomeMonitor = ({
         return pending
       }
 
-      // Persisted samples gate only the first round after a restart; later
-      // rounds use start-to-start time with slack for scheduler jitter.
+      // Start with a fresh observation, then enforce the in-process cooldown.
       const isFresh =
-        lastStartedAt === undefined
-          ? homes.every(home => {
-              const sample = store.readHome(home.id).sample
-
-              const age = sample ? now() - Date.parse(sample.observedAt) : null
-
-              return age !== null && age >= 0 && age < minimumMs
-            })
-          : monotonicNow() - lastStartedAt < minimumMs - 1000
+        lastStartedAt !== undefined &&
+        monotonicNow() - lastStartedAt < minimumMs - 1000
 
       if (!force && isFresh) {
         return Promise.resolve(getStatuses())

@@ -93,6 +93,7 @@ const cadenceFixture = async (
   const state = {
     calls: 0,
     fail: false,
+    powerStatus: 'unknown',
     store: await openMonitorStore({ directory, homeIds: ['1'] }),
   }
 
@@ -101,7 +102,7 @@ const cadenceFixture = async (
     await fs.rm(directory, { recursive: true, force: true })
   })
 
-  const create = () =>
+  const create = (runId = 'r') =>
     createHomeMonitor({
       store: updateHome
         ? { readHome: id => state.store.readHome(id), updateHome }
@@ -123,14 +124,14 @@ const cadenceFixture = async (
             homes: [
               {
                 id: '1',
-                status: 'unknown',
+                status: state.powerStatus,
                 observedAt: new Date(clock.wall).toISOString(),
               },
             ],
           }
         },
       },
-      runId: 'r',
+      runId,
       intervalSeconds,
       now: () => clock.wall,
       monotonicNow: () => clock.monotonic,
@@ -245,27 +246,50 @@ test('the in-process cooldown holds even when wall-clock samples look stale', as
   assert.equal(state.calls, 1)
 })
 
-test('restart honors recent persisted samples and treats future samples as stale', async t => {
+test('the first check after restart polls despite a recent saved sample', async t => {
   const { clock, state, create, advance, reopen } = await cadenceFixture(t)
 
   await create().check()
   assert.equal(state.calls, 1)
 
+  await state.store.updateHome('1', record => ({
+    ...record,
+    lastDecisiveStatus: 'off',
+    lastDecisiveAt: new Date(clock.wall).toISOString(),
+    lastOff: {
+      detectedAt: new Date(clock.wall - 60000).toISOString(),
+      baseline: false,
+    },
+  }))
+
+  const saved = state.store.readHome('1')
+
   await reopen()
   clock.monotonic = 0
   advance(30000)
-  await create().check()
-  assert.equal(state.calls, 1)
 
-  await reopen()
-  advance(30000)
-  await create().check()
+  const coordinator = create('second-run')
+  const [status] = await coordinator.check()
+
+  assert.equal(state.calls, 2)
+  assert.equal(status.observedAt, new Date(clock.wall).toISOString())
+  assert.equal(status.lastInferredStatus, 'off')
+  assert.equal(status.lastInferredAt, saved.lastDecisiveAt)
+  assert.deepEqual(status.lastOff, saved.lastOff)
+
+  await coordinator.check()
   assert.equal(state.calls, 2)
 
   await reopen()
-  clock.wall -= 1000
-  await create().check()
+  state.powerStatus = 'off'
+
+  const [confirmed] = await create('third-run').check()
+
   assert.equal(state.calls, 3)
+  assert.equal(confirmed.status, 'off')
+  assert.equal(confirmed.lastInferredAt, new Date(clock.wall).toISOString())
+  assert.deepEqual(confirmed.lastOff, saved.lastOff)
+  assert.equal(confirmed.durationMs, null)
 })
 
 test('a failed provider round still applies the cooldown', async t => {
