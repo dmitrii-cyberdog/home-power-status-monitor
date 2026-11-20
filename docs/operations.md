@@ -115,8 +115,10 @@ pm2 start server.json --env prod
 
 These commands select `local`, `dev`, and `prod`. The alternate
 `server_local.json` also defaults to `local` and watches source and locale
-changes. Local and dev modes enable debug logs. Run one worker per storage
-directory.
+changes. Local and dev modes enable debug logs. In local mode, successful HTTP
+requests can log structured JSON response data. The logger redacts credential
+fields such as `accessToken` and `appSecret`. Device names and serials can
+appear in local logs. Run one worker per storage directory.
 
 The worker stores home records in `volume/homes/<id>.json` and chat records in
 `volume/chats.json`. See

@@ -64,10 +64,23 @@ localization, queues, logging, cron lifecycle, controlled worker
 startup/shutdown and the outbound HTTP client using local test servers. They do
 not contact live Telegram or device-provider accounts.
 
-Use Node.js 24 for development. The engines in [package.json](../package.json)
-also allow Node.js 22.13+ in the 22.x series and Node.js 26 or later. Live
-provider connectivity, Telegram group behavior, and deployment need separate
-acceptance checks before deployment.
+Use Node.js 24.15.0 or later in the 24.x line for development. The JSDoc lint
+plugin requires at least 22.22.2 on the 22.x line. The runtime engines in
+[package.json](../package.json) also allow Node.js 22.13+ in the 22.x series and
+Node.js 26 or later. Live provider connectivity, Telegram group behavior, and
+deployment need separate acceptance checks before deployment.
+
+TypeScript is a development dependency for the lint plugins' peer requirements.
+The worker runs native JavaScript.
+
+Run the chat authorization benchmark from the repository root:
+
+```sh
+node --import=extensionless/register tests/benchmarks/chat-access.mjs
+```
+
+It uses an isolated temporary store with synthetic chat grants and reports full
+registry copies and median elapsed time across five batches of 1,000 checks.
 
 ## Monitor implementation
 

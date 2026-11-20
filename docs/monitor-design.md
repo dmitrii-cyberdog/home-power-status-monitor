@@ -48,13 +48,16 @@ home preserves its history; never reuse an ID for another physical home.
 
 An initial on/off result is a baseline with unknown actual start. Initial off
 sends an outage alert; initial on does not send restoration. Equal decisive
-samples in one process run within two intervals contribute to on/off estimates.
-Other elapsed intervals count as uncertain. Clock reversal never subtracts or
-double-counts time. Restart resets streaks and exposes current state as unknown
-until a new sample commits. An unchanged state after restart sends no event.
-Unknown gaps interrupt continuous-duration claims until a new episode starts.
-Results older than two intervals are stale. Unobserved tail time is displayed
-separately; totals stop at the last processed sample. No calendar reports exist.
+samples in one process run within twice the effective polling interval
+contribute to on/off estimates. Other elapsed intervals count as uncertain.
+Clock reversal never subtracts or double-counts time. Restart resets streaks and
+exposes current state as unknown until a new sample commits. An unchanged state
+after restart sends no event. Unknown gaps interrupt continuous-duration claims
+until a new episode starts. Results older than twice the effective polling
+interval are stale. Both calculations use
+`max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds as the interval. Unobserved tail
+time is displayed separately; totals stop at the last processed sample. No
+calendar reports exist.
 
 ## Telegram access and delivery
 
@@ -75,19 +78,22 @@ filters that snapshot. Concurrent status requests and scheduled checks share the
 in-flight round.
 
 `/status [home name]` returns a brief summary: current state, a readable
-duration since detection when continuity is supported, and the last
-opposite-state detection. For example:
+duration since detection when continuity is supported, the episode detection
+time, and the last opposite-state detection. For example:
 
 ```text
 Family Home
 Power on for 2 days 3 hours (since detection)
+State detected at: 2026-11-18 08:00 GMT+2
 Last power off: 2026-11-17 20:10 GMT+2
 ```
 
 Missing history is shown as not observed. An online camera initializes `lastOn`
-and the decisive state, not an invented `lastOff`. Unknown results show unknown
-current power, with the last confirmed state when available. Gaps and restarts
-can leave continuous duration unknown even after a fresh decisive observation.
+and the decisive state, not an invented `lastOff`. An inconclusive check shows
+the last known state, episode detection time and last confirmation, with a note
+that the current state could not be confirmed. Without a prior decisive
+observation, the bot reports unknown power. Gaps and restarts can leave
+continuous duration unknown even after a fresh decisive observation.
 
 `/status_full [home name]` uses the same access, refresh and filtering rules. It
 adds observation/detection timestamps, baseline and uncertainty notes, sampled
@@ -100,19 +106,16 @@ Scheduled ticks and both status commands share one cadence. The minimum interval
 is `max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds. A request first joins any
 in-flight round. The first check in a process polls even when a persisted
 observation is recent. The saved detection and last confirmation survive a
-restart. The brief reply includes the saved episode detection when current
-status or the continuous duration is unknown. If current power is unknown, the
-last confirmed state and its observation time appear separately. After a round
-has started in this process, the next round may start once the minimum interval
-less one second of scheduler slack has elapsed since the previous round started,
-measured with a monotonic clock, so wall-clock jumps and provider latency
-neither skip ticks nor shorten the cadence. A round's start time is recorded
-before the provider call, so failed provider rounds or writes still wait out the
-cooldown. Other requests reply from the latest committed results without calling
-the provider or writing storage, so cached replies never advance inference or
-add alerts. Stale status requests still poll when scheduled polling is disabled.
-Only the local manual launcher forces a round regardless of cadence; Telegram
-commands cannot.
+restart. After a round has started in this process, the next round may start
+once the minimum interval less one second of scheduler slack has elapsed since
+the previous round started, measured with a monotonic clock, so wall-clock jumps
+and provider latency neither skip ticks nor shorten the cadence. A round's start
+time is recorded before the provider call, so failed provider rounds or writes
+still wait out the cooldown. Other requests reply from the latest committed
+results without calling the provider or writing storage, so cached replies never
+advance inference or add alerts. Stale status requests still poll when scheduled
+polling is disabled. Only the local manual launcher forces a round regardless of
+cadence; Telegram commands cannot.
 
 In private groups use `/status@BotUsername Family Home` and corresponding
 addressed forms for other commands. Bare protected group commands and unrelated

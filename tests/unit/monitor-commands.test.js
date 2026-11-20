@@ -559,7 +559,7 @@ test('protected commands gate home reads and group commands require addressing',
   assert.equal(reads, 0)
   assert.equal(checks, 0)
   await send('/status@power_test_bot', 'supergroup')
-  assert.equal(reads, 1)
+  assert.equal(reads, 0)
   assert.equal(checks, 1)
 })
 

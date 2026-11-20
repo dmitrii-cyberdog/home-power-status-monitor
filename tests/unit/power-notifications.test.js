@@ -322,6 +322,59 @@ test('a failed subscription write cannot let drain abandon other accepted sends'
   await draining
 })
 
+test('shutdown reports a periodic write failure with a queued alert tick', async t => {
+  const store = await fixture(t)
+
+  const write = Promise.withResolvers()
+  const started = Promise.withResolvers()
+
+  let now = 0
+
+  const dispatcher = createPowerNotifications({
+    store,
+    homes: [{ id: '1', notificationIntervalMinutes: 1 }],
+    now: () => now,
+    getStatuses: () => [{ id: '1' }],
+    access: {
+      recipients: () => [{ chatId: '1' }],
+      isDeliveryAllowed: () => true,
+      getLocale: () => 'en',
+      disableSubscriptions: () => {
+        started.resolve()
+
+        return write.promise
+      },
+    },
+    renderStatus: () => ['status'],
+    send: async () => {
+      throw {
+        error_code: 403,
+        description: 'Forbidden: bot was blocked by the user',
+      }
+    },
+  })
+
+  await dispatcher.flush({ includeAlerts: false })
+  now = 60000
+
+  const periodic = dispatcher.flush({ includeAlerts: false })
+
+  await started.promise
+
+  const alertTick = dispatcher.flush()
+
+  dispatcher.stop()
+
+  const outcomes = Promise.allSettled([periodic, alertTick, dispatcher.drain()])
+
+  write.reject(new Error('disk'))
+
+  for (const result of await outcomes) {
+    assert.equal(result.status, 'rejected')
+    assert.match(result.reason.message, /Notification pass persistence failed/)
+  }
+})
+
 const runtimeFixture = async (
   t,
   homeOptions = {},
@@ -567,4 +620,48 @@ test('recurring ticks leave durable alerts for their configured polling cadence'
   assert.equal(sent.length, 2)
   assert.equal(sent.at(-1).payload.parse_mode, 'HTML')
   assert.equal(store.readHome('1').pendingDeliveries.length, 1)
+})
+
+test('a full alert tick during a periodic send drains the pending alert', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+
+  let now = 0
+
+  const { runtime, sent, store } = await runtimeFixture(
+    t,
+    { notificationIntervalMinutes: 1 },
+    () => now,
+    90,
+  )
+
+  const [delivery] = store.readHome('1').pendingDeliveries
+
+  runtime.startNotifications()
+  await runtime.drainNotifications()
+
+  await store.updateHome('1', record => {
+    record.pendingDeliveries = [delivery]
+
+    return record
+  })
+
+  const release = blockQueue()
+
+  try {
+    now = 60000
+    t.mock.timers.tick(60000)
+
+    now = 90000
+    t.mock.timers.tick(30000)
+  } finally {
+    await release()
+  }
+
+  await runtime.drainNotifications()
+
+  assert.deepEqual(
+    sent.map(call => call.payload.parse_mode),
+    [undefined, 'HTML', undefined],
+  )
+  assert.deepEqual(store.readHome('1').pendingDeliveries, [])
 })

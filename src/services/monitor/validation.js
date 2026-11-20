@@ -102,8 +102,8 @@ const deliveryRecord = strictShape({
 //
 
 const verifier = strictShape({
-  salt: value => /^[a-f0-9]{32}$/.test(value),
-  digest: value => /^[a-f0-9]{128}$/.test(value),
+  salt: value => typeof value === 'string' && /^[a-f0-9]{32}$/.test(value),
+  digest: value => typeof value === 'string' && /^[a-f0-9]{128}$/.test(value),
 })
 
 const subscriptionRecord = strictShape({ id: isNonemptyString })
@@ -167,7 +167,7 @@ export const validateHomeRecord = (value, id) => {
 }
 
 export const validateChatRegistry = value => {
-  if (!chatRegistry(value)) {
+  if (!chatRegistry(value) || (value.verifier && value.generation === null)) {
     throw new Error('Invalid chat registry')
   }
 

@@ -15,7 +15,9 @@ export const createHomeMonitor = ({
 
   let lastStartedAt
 
-  const minimumMs = Math.max(60, intervalSeconds) * 1000
+  const effectiveIntervalSeconds = Math.max(60, intervalSeconds)
+
+  const minimumMs = effectiveIntervalSeconds * 1000
 
   const devices = new Map()
 
@@ -24,7 +26,7 @@ export const createHomeMonitor = ({
       ...powerHistory.projectHomeStatus(store.readHome(home.id), {
         home,
         runId,
-        intervalSeconds,
+        intervalSeconds: effectiveIntervalSeconds,
         now: now(),
       }),
       devices: structuredClone(devices.get(home.id) ?? []),
@@ -60,7 +62,7 @@ export const createHomeMonitor = ({
                 observation,
                 {
                   runId,
-                  intervalSeconds,
+                  intervalSeconds: effectiveIntervalSeconds,
                   recipients: access.recipients(observation.id, registry),
                 },
               )

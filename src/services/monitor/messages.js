@@ -58,13 +58,17 @@ const summaryLines = (home, t, timestamp) => {
   const lines = [[home.name, 'b']]
 
   if (home.status === 'unknown') {
-    lines.push([t('monitor_status_unknown'), 'b'])
-
     if (home.lastInferredStatus && home.lastInferredStatus !== 'unknown') {
       lines.push([
-        `${t('monitor_last_confirmed')}: ${t(`monitor_${home.lastInferredStatus}`)} (${timestamp(home.lastInferredAt)})`,
+        `${t('monitor_last_known')}: ${t(`monitor_${home.lastInferredStatus}`)}`,
+        'b',
       ])
+      lines.push([
+        `${t('monitor_last_confirmed')}: ${timestamp(home.lastInferredAt)}`,
+      ])
+      lines.push([t('monitor_check_inconclusive'), 'i'])
     } else {
+      lines.push([t('monitor_status_unknown'), 'b'])
       lines.push([`${t('monitor_observed')}: ${timestamp(home.observedAt)}`])
     }
   } else {
@@ -126,12 +130,12 @@ const renderBriefStatus = (statuses, t, format) =>
     const lastState =
       home.status === 'unknown' ? home.lastInferredStatus : home.status
 
-    if (home.status === 'unknown' || home.durationMs == null) {
+    if (lastState === 'on' || lastState === 'off') {
       const episode = lastState === 'off' ? home.lastOff : home.lastOn
 
-      if ((lastState === 'off' || lastState === 'on') && episode) {
-        details.push([
-          `${translate(`monitor_last_${lastState}`)}: ${statusEpisode(episode, translate, timestamp)}`,
+      if (episode) {
+        details.unshift([
+          `${translate('monitor_since')}: ${statusEpisode(episode, translate, timestamp)}`,
         ])
       }
     }
@@ -190,11 +194,11 @@ export const renderFullStatusMessages = (statuses, t) =>
       [`${translate('monitor_on')}: ${duration(home.stats.onMs, translate)}`],
       [`${translate('monitor_off')}: ${duration(home.stats.offMs, translate)}`],
       [
-        `${translate('monitor_uncertain')}: ${duration(home.stats.uncertainMs, translate)}`,
+        `${translate('monitor_unknown_time')}: ${duration(home.stats.uncertainMs, translate)}`,
       ],
       [`${translate('monitor_outages')}: ${home.stats.outageCount}`],
       [
-        `${translate('monitor_tail')}: ${duration(home.unobservedTailMs, translate)}`,
+        `${translate('monitor_tail')}: ${home.observedAt ? duration(home.unobservedTailMs, translate) : translate('monitor_not_observed')}`,
       ],
     )
 

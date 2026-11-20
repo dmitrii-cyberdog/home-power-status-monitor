@@ -29,12 +29,14 @@ export const createChatAccess = ({
 
   const known = new Set(homes.map(home => home.id))
 
-  const isAuthorizedIn = (chatId, registry) =>
-    ready &&
-    Boolean(secret) &&
-    registry.chats[String(chatId)]?.authorizedGeneration === registry.generation
+  const isAuthorizedIn = (chat, generation) =>
+    ready && Boolean(secret) && chat?.authorizedGeneration === generation
 
-  const isAuthorized = chatId => isAuthorizedIn(chatId, store.readChats())
+  const isAuthorized = chatId => {
+    const { chat, generation } = store.readChat(chatId)
+
+    return isAuthorizedIn(chat, generation)
+  }
 
   const recipients = (homeId, registry) => {
     if (!ready || !secret || !known.has(homeId)) {
@@ -69,15 +71,14 @@ export const createChatAccess = ({
       return next
     })
 
-  const isDeliveryAllowedIn = (delivery, registry) => {
+  const isDeliveryAllowedIn = (delivery, chat, generation) => {
     const homeId = delivery.eventId.split(':')[0]
 
     return (
       known.has(homeId) &&
-      isAuthorizedIn(delivery.chatId, registry) &&
-      registry.generation === delivery.generation &&
-      registry.chats[delivery.chatId].subscriptions[homeId]?.id ===
-        delivery.subscriptionId
+      isAuthorizedIn(chat, generation) &&
+      generation === delivery.generation &&
+      chat.subscriptions[homeId]?.id === delivery.subscriptionId
     )
   }
 
@@ -143,7 +144,7 @@ export const createChatAccess = ({
     },
     isAuthorized,
     getLocale(chatId) {
-      return store.readChats().chats[String(chatId)]?.locale
+      return store.readChat(chatId).chat?.locale
     },
     async setLocale(chatId, locale) {
       const id = String(chatId)
@@ -156,33 +157,33 @@ export const createChatAccess = ({
       })
     },
     captureGrant(chatId) {
-      const registry = store.readChats()
+      const { chat, generation } = store.readChat(chatId)
 
-      if (!isAuthorizedIn(chatId, registry)) {
+      if (!isAuthorizedIn(chat, generation)) {
         return null
       }
 
       return {
-        generation: registry.generation,
-        grantId: registry.chats[String(chatId)].grantId,
+        generation,
+        grantId: chat.grantId,
       }
     },
     isGrantCurrent(chatId, grant) {
-      const registry = store.readChats()
+      const { chat, generation } = store.readChat(chatId)
 
       return (
-        isAuthorizedIn(chatId, registry) &&
-        registry.generation === grant.generation &&
-        registry.chats[String(chatId)].grantId === grant.grantId
+        isAuthorizedIn(chat, generation) &&
+        generation === grant.generation &&
+        chat.grantId === grant.grantId
       )
     },
     isSubscribed(chatId, homeId) {
-      const registry = store.readChats()
+      const { chat, generation } = store.readChat(chatId)
 
       return (
         known.has(homeId) &&
-        isAuthorizedIn(chatId, registry) &&
-        Boolean(registry.chats[String(chatId)].subscriptions[homeId])
+        isAuthorizedIn(chat, generation) &&
+        Boolean(chat.subscriptions[homeId])
       )
     },
     async authorize(chatId, suppliedSecret, locale) {
@@ -214,12 +215,12 @@ export const createChatAccess = ({
         }
       }
 
-      const registry = store.readChats()
+      const verifier = store.readVerifier()
 
       if (
         !timingSafeEqual(
-          await digest(suppliedSecret, registry.verifier.salt),
-          Buffer.from(registry.verifier.digest, 'hex'),
+          await digest(suppliedSecret, verifier.salt),
+          Buffer.from(verifier.digest, 'hex'),
         )
       ) {
         return 'invalid'
@@ -248,7 +249,7 @@ export const createChatAccess = ({
       let result
 
       await store.updateChats(registry => {
-        if (!isAuthorizedIn(id, registry)) {
+        if (!isAuthorizedIn(registry.chats[id], registry.generation)) {
           throw new Error('Access denied')
         }
 
@@ -295,11 +296,19 @@ export const createChatAccess = ({
     },
     recipients,
     isDeliveryAllowed(delivery) {
-      return isDeliveryAllowedIn(delivery, store.readChats())
+      const { chat, generation } = store.readChat(delivery.chatId)
+
+      return isDeliveryAllowedIn(delivery, chat, generation)
     },
     async disableSubscriptions(delivery) {
       await store.updateChats(registry => {
-        if (isDeliveryAllowedIn(delivery, registry)) {
+        if (
+          isDeliveryAllowedIn(
+            delivery,
+            registry.chats[delivery.chatId],
+            registry.generation,
+          )
+        ) {
           registry.chats[delivery.chatId].subscriptions = {}
         }
 

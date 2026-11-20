@@ -26,23 +26,23 @@
     "form-data": "^4.0.6",
     "grammy": "^1.44.0",
     "nanoid": "^6.0.0",
-    "node-cron": "^4.6.0",
-    "p-queue": "^9.3.1",
-    "qs": "6.16.1",
+    "p-queue": "^10.0.0",
+    "qs": "6.17.1",
     "tunnel": "^0.0.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.7.0",
     "eslint-plugin-import-x": "^4.17.1",
-    "eslint-plugin-jsdoc": "^63.1.0",
+    "eslint-plugin-jsdoc": "^65.5.0",
     "eslint-plugin-n": "^18.2.2",
     "globals": "^17.7.0",
     "husky": "^9.1.7",
-    "prettier": "^3.9.5"
+    "prettier": "^3.9.5",
+    "typescript": "~6.0.0"
   },
   "resolutions": {
-    "qs": "6.16.1"
+    "qs": "6.17.1"
   },
   "extensionless": {
     "lookFor": [

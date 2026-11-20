@@ -96,5 +96,6 @@ step. Use scoped ESLint and Prettier checks for touched files.
 - Never bypass checks or discard unfamiliar work.
 - Do not change Git history, branch configuration or remotes without
   authorization.
-- This repository has no configured deployment workflow. Do not assume branch
-  names imply permission to deploy.
+- A push to `master` triggers the deployment workflow in
+  `.github/workflows/deploy.yml` after CI tests pass. Get approval before
+  pushing or deploying.

@@ -5,6 +5,8 @@
 //
 //
 
+import { inspect } from 'node:util'
+
 import axios from 'axios'
 // import { nanoid } from 'nanoid'
 
@@ -356,7 +358,9 @@ class Logger {
           '\x1b[36m%s\x1b[0m',
           consoleMessage,
           payload.main,
-          payload.additional,
+          config.envName === 'local' && payload.additional
+            ? inspect(payload.additional, { depth: MAX_LOG_DEPTH })
+            : payload.additional,
         ) // cyan
         break
       default:

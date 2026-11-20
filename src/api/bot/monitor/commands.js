@@ -199,11 +199,11 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       return
     }
 
-    const statuses = homeMonitor.getStatuses()
-
-    const home = statuses.find(
-      candidate => candidate.name.toLowerCase() === argument,
-    )
+    const home = argument
+      ? homeMonitor
+          .getStatuses()
+          .find(candidate => candidate.name.toLowerCase() === argument)
+      : undefined
 
     if (argument && !home) {
       await ctx.reply(ctx.t('monitor_not_found'))

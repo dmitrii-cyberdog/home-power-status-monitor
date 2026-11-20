@@ -172,8 +172,43 @@ test('full status formats diagnostics and escapes every dynamic field', () => {
     assert.match(result, /<b>&lt;b&gt;Home &amp; Co&lt;\/b&gt;<\/b>/)
     assert.match(result, /<i>/)
     assert.match(result, /auth_failed/)
+    assert.ok(
+      result.includes(
+        locale === 'en'
+          ? 'Time with unknown power status'
+          : 'Время с неизвестным состоянием электроснабжения',
+      ),
+    )
+    assert.ok(
+      result.includes(
+        locale === 'en'
+          ? 'Time since the end of the measured period'
+          : 'Время с конца учтённого периода',
+      ),
+    )
     assert.match(result, /1970-01-01 00:00 UTC/)
     assert.doesNotMatch(result, /monitor_/)
+  }
+})
+
+test('full status leaves the unmeasured time unknown before the first sample', () => {
+  const status = home({
+    observedAt: null,
+    status: 'unknown',
+    lastOn: null,
+    stateSince: null,
+  })
+
+  for (const [locale, expected] of [
+    ['en', 'Time since the end of the measured period: Not observed'],
+    ['ru', 'Время с конца учтённого периода: Нет наблюдений'],
+  ]) {
+    const [message] = messages.renderFullStatusMessages(
+      [status],
+      translate(locale),
+    )
+
+    assert.ok(message.includes(expected))
   }
 })
 
@@ -409,11 +444,38 @@ test('brief status distinguishes outage detection from the last confirmation', (
     translate('en'),
   )
 
-  assert.match(unknown, /Last confirmed: Power off \(2026-11-20 18:50 GMT\+2\)/)
-  assert.match(unknown, /Last power off: 2026-11-20 17:58 GMT\+2/)
+  assert.match(unknown, /Last known state: Power off/)
+  assert.match(unknown, /Last confirmed: 2026-11-20 18:50 GMT\+2/)
+  assert.match(unknown, /The current state could not be confirmed/)
+  assert.doesNotMatch(unknown, /Power status unknown/)
+  assert.match(unknown, /State detected at: 2026-11-20 17:58 GMT\+2/)
 
   const [off] = renderStatusMessages([outage], translate('en'))
 
-  assert.match(off, /Last power off: 2026-11-20 17:58 GMT\+2/)
+  assert.match(off, /State detected at: 2026-11-20 17:58 GMT\+2/)
   assert.doesNotMatch(off, /Power off for/)
+})
+
+test('Russian brief status distinguishes a confirmed outage from the last known outage', () => {
+  const outage = home({
+    timeZone: 'GMT+3',
+    status: 'off',
+    lastOff: { detectedAt: '2026-11-20T15:58:00.000Z', baseline: false },
+    lastInferredStatus: 'off',
+    lastInferredAt: '2026-11-20T17:12:00.000Z',
+  })
+
+  const [current] = renderStatusMessages([outage], translate('ru'))
+  const [inconclusive] = renderStatusMessages(
+    [{ ...outage, status: 'unknown' }],
+    translate('ru'),
+  )
+
+  assert.match(current, /⚡ ❌ Электричества нет/)
+  assert.match(current, /Состояние обнаружено: 2026-11-20 18:58 GMT\+3/)
+  assert.match(inconclusive, /По последним данным: Электричества нет/)
+  assert.match(inconclusive, /Состояние обнаружено: 2026-11-20 18:58 GMT\+3/)
+  assert.match(inconclusive, /Последнее подтверждение: 2026-11-20 20:12 GMT\+3/)
+  assert.match(inconclusive, /Подтвердить текущее состояние не удалось/)
+  assert.doesNotMatch(inconclusive, /Состояние электричества неизвестно|уже /)
 })

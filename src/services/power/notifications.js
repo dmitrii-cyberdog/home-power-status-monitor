@@ -22,7 +22,9 @@ export const createPowerNotifications = ({
 }) => {
   let stopped = false
 
-  let pending = null
+  let pendingAlerts = null
+
+  let pendingStatus = null
 
   const statusCadences = new Map(
     homes
@@ -240,15 +242,38 @@ export const createPowerNotifications = ({
         return Promise.resolve()
       }
 
-      pending ??= pass(includeAlerts).finally(() => {
-        pending = null
+      if (pendingAlerts) {
+        return pendingAlerts
+      }
+
+      if (includeAlerts) {
+        const runAlerts = () => {
+          if (!stopped) {
+            return pass(true)
+          }
+        }
+
+        // Keep the scheduled alert tick even if a periodic status send is busy.
+        const alerts = pendingStatus
+          ? pendingStatus.finally(runAlerts)
+          : pass(true)
+
+        pendingAlerts = alerts.finally(() => {
+          pendingAlerts = null
+        })
+
+        return pendingAlerts
+      }
+
+      pendingStatus ??= pass(false).finally(() => {
+        pendingStatus = null
       })
 
-      return pending
+      return pendingStatus
     },
     stop() {
       stopped = true
     },
-    drain: () => pending ?? Promise.resolve(),
+    drain: () => pendingAlerts ?? pendingStatus ?? Promise.resolve(),
   }
 }

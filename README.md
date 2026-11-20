@@ -4,8 +4,9 @@ A self-hosted Telegram bot that estimates home electricity status from selected
 EZVIZ cameras. It sends outage and restoration alerts, can send periodic status
 updates, and stores power history locally as JSON.
 
-Use Node.js 24, an EZVIZ Europe API app with access to your cameras, and a
-Telegram bot token. An internet outage can look like a power outage.
+Use Node.js 24.15+ in the 24.x line, an EZVIZ Europe API app with access to your
+cameras, and a Telegram bot token. An internet outage can look like a power
+outage.
 
 ## Quick start
 

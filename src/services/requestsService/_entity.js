@@ -218,7 +218,7 @@ export class Request {
    */
 
   async #query(method, dataRaw = null, queryOptions = {}) {
-    const requestId = await getRandomId()
+    const requestId = getRandomId()
     const startRequest = Date.now()
 
     const requestData = this.#buildRequestData(method, dataRaw, queryOptions)
@@ -239,7 +239,7 @@ export class Request {
       maxContentLength: MAX_RESPONSE_BYTES,
     }
 
-    Logger.info?.('REQUEST', {
+    Logger.info('REQUEST', {
       request: {
         serviceAPI: this.constructor.name,
         method: options.method.toUpperCase(),
@@ -249,20 +249,6 @@ export class Request {
         requestId,
       },
     })
-
-    // Fallback for old Logger versions where info may not exist.
-    if (!Logger.info) {
-      Logger.debug('REQUEST', {
-        request: {
-          serviceAPI: this.constructor.name,
-          method: options.method.toUpperCase(),
-          url: this.#safeUrl(options.url),
-          headerNames: Object.keys(options.headers),
-          hasBody: options.data !== null,
-          requestId,
-        },
-      })
-    }
 
     let errorsCounter = 0
     let res = null
@@ -274,6 +260,12 @@ export class Request {
         Logger.debug('REQUEST - Success', {
           request: {
             status: res.status,
+            ...(config.envName === 'local' &&
+            options.responseType === 'json' &&
+            res.data !== null &&
+            typeof res.data === 'object'
+              ? { content: res.data }
+              : {}),
             contentLength: res.headers?.['content-length'] || null,
             responseType: options.responseType,
             requestId,
@@ -324,9 +316,6 @@ export class Request {
     Logger.debug('REQUEST - Finished', {
       request: {
         requestId,
-        //
-        ...(config.envName === 'local' ? { content: res?.data ?? null } : {}),
-        //
         time: `${Date.now() - startRequest} ms`,
       },
       errorsCounter,

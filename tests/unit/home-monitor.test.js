@@ -209,6 +209,37 @@ for (const intervalSeconds of [60, 120]) {
   })
 }
 
+test('short configured intervals use the poll floor for freshness and accounting', async t => {
+  const { state, create, advance } = await cadenceFixture(t, {
+    intervalSeconds: 10,
+  })
+
+  state.powerStatus = 'off'
+  const coordinator = create()
+
+  await coordinator.check()
+  advance(45000)
+
+  const [cached] = await coordinator.check()
+
+  assert.equal(state.calls, 1)
+  assert.equal(cached.status, 'off')
+
+  advance(15000)
+
+  const [next] = await coordinator.check()
+
+  assert.equal(state.calls, 2)
+  assert.equal(next.stats.offMs, 60000)
+  assert.equal(next.durationMs, 60000)
+
+  advance(120000)
+  assert.equal(coordinator.getStatuses()[0].stale, false)
+
+  advance(1)
+  assert.equal(coordinator.getStatuses()[0].stale, true)
+})
+
 test('a longer configured interval sets the minimum cadence', async t => {
   const { state, create, advance } = await cadenceFixture(t, {
     intervalSeconds: 120,

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import http from 'node:http'
 import test from 'node:test'
+import { format } from 'node:util'
 
-import { logger as Logger, Request } from '../../src/services/index.js'
+import config from '../../src/config/index.js'
+import { Request } from '../../src/services/index.js'
 
 const serve = async (t, handler) => {
   const server = http.createServer(handler).listen(0, '127.0.0.1')
@@ -95,18 +97,41 @@ test('retained request transport does not retry rejected credentials', async t =
   assert.equal(calls, 1)
 })
 
-test('request debug logs never include provider response bodies', async t => {
+test('only local debug logs include response data with sensitive fields redacted', async t => {
+  const original = { envName: config.envName, isDebug: config.isDebug }
+
+  t.after(() => Object.assign(config, original))
+
+  config.isDebug = true
+
   const logs = []
 
-  t.mock.method(Logger, 'debug', (...values) => logs.push(values))
+  t.mock.method(console, 'log', (...values) => logs.push(values))
 
   const client = await serve(t, (_req, res) => {
     res.setHeader('content-type', 'application/json')
     res.end(
-      '{"accessToken":"private-response-sentinel","message":"private-response-sentinel"}',
+      '{"data":{"accessToken":"private-response-sentinel","deviceName":"visible-camera"}}',
     )
   })
 
-  await client.get('device')
-  assert.doesNotMatch(JSON.stringify(logs), /private-response-sentinel/)
+  for (const mode of ['local', 'dev', 'prod', 'test']) {
+    config.envName = mode
+    logs.length = 0
+
+    const result = await client.get('device')
+
+    assert.equal(result.content.data.accessToken, 'private-response-sentinel')
+
+    const output = logs.map(args => format(...args)).join('\n')
+
+    assert.doesNotMatch(output, /private-response-sentinel/)
+
+    if (mode === 'local') {
+      assert.match(output, /visible-camera/)
+      assert.match(output, /REDACTED/)
+    } else {
+      assert.doesNotMatch(output, /visible-camera/)
+    }
+  }
 })

@@ -129,6 +129,13 @@ export const openMonitorStore = async ({
 
         return structuredClone(homes.get(id))
       },
+      readChat: id => ({
+        generation: chats.generation,
+        chat: Object.hasOwn(chats.chats, id)
+          ? structuredClone(chats.chats[id])
+          : undefined,
+      }),
+      readVerifier: () => structuredClone(chats.verifier),
       readChats: () => structuredClone(chats),
       updateHome: (id, update) =>
         enqueue(async () => {

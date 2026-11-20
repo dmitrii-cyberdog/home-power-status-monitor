@@ -142,6 +142,24 @@ test('chat registry accepts legacy and current grant IDs but rejects malformed o
   }
 })
 
+test('stored verifiers require hex strings and an active generation', () => {
+  const salt = 'a'.repeat(32)
+  const digest = 'b'.repeat(128)
+
+  const registry = monitorRecords.createChatRegistry()
+
+  for (const patch of [
+    { verifier: { salt, digest }, generation: null },
+    { verifier: { salt: [salt], digest }, generation: 'g' },
+    { verifier: { salt, digest: [digest] }, generation: 'g' },
+  ]) {
+    assert.throws(
+      () => monitorValidation.validateChatRegistry({ ...registry, ...patch }),
+      /Invalid chat registry/,
+    )
+  }
+})
+
 test('home validation accepts legacy and current deliveries and rejects invalid episode history', () => {
   const record = monitorRecords.createHomeRecord('1')
 
