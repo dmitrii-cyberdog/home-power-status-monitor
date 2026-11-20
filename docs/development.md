@@ -11,11 +11,12 @@ and access initializes before producers start. Scheduled ticks skip busy work;
 manual calls coalesce. Notification delivery runs independently of polling and
 never holds the storage mutation queue during a network request.
 
-Authorized `/status` and `/status_full` commands force a shared monitoring round
-and reply after commit. Scheduled rounds skip while every persisted
-`sample.observedAt` is less than 60 seconds old; missing, older or future
-timestamps allow polling. The existing interval still determines when scheduled
-ticks run.
+Authorized `/status` and `/status_full` commands share a coordinator with
+scheduled checks. The first check after startup polls even if the previous
+process saved a recent observation. Later requests join an in-flight round or
+use cached results within the cooldown. See the
+[monitor design](monitor-design.md#telegram-access-and-delivery) for cadence
+details.
 
 `/status` shows current power, duration since detection and the last opposite
 state detection. `/status_full` adds formatted history, sampled totals and safe
@@ -32,22 +33,22 @@ Windows PM2 uses IPC `shutdown` messages; both manifests enable
 
 ## Local configuration and data
 
-Configuration defaults to `NODE_ENV=local`: load `.env`, then `.env.local` from
-`src`. `NODE_ENV=dev` inserts `.env.dev` between them; `NODE_ENV=prod` inserts
-`.env.prod`. Exported variables override all files. Only `local`, `dev`, `prod`
-and the isolated `test` mode are accepted. Tests use `NODE_ENV=test` and skip
-dotenv files.
-
-Track shared non-secret defaults in `src/.env`, `src/.env.dev` and
-`src/.env.prod`. Keep credentials, device IDs, home names, chat IDs and other
-private settings in ignored local files such as `src/.env.local`. Runtime
-storage belongs under the ignored `volume` directory.
+See [configuration](operations.md#configuration) for environment modes,
+precedence, and private settings. Track shared non-secret defaults in
+`src/.env`, `src/.env.dev`, and `src/.env.prod`. Runtime storage belongs under
+the ignored `volume` directory.
 
 Local editor/agent settings, migration notes, rollback snapshots, caches and
 logs are excluded from the public source tree. Keep these exclusions when adding
 files. Review the staged paths before publishing a commit.
 
 ## Validation
+
+Yarn 4.18.0 is vendored. The install command in the
+[quick start](../README.md#quick-start) installs local Git hooks. To skip hooks,
+set `HUSKY=0` in your shell before running the install command. The pre-commit
+hook runs lint and tests. A working Yarn shim supports equivalent `yarn`
+commands.
 
 From the repository root, run:
 
@@ -63,10 +64,10 @@ localization, queues, logging, cron lifecycle, controlled worker
 startup/shutdown and the outbound HTTP client using local test servers. They do
 not contact live Telegram or device-provider accounts.
 
-Use Node.js 24 for development. Supported engine declarations do not imply that
-every platform or Node version has been tested. Live provider connectivity,
-Telegram group behavior and deployment need separate acceptance checks before
-deployment.
+Use Node.js 24 for development. The engines in [package.json](../package.json)
+also allow Node.js 22.13+ in the 22.x series and Node.js 26 or later. Live
+provider connectivity, Telegram group behavior, and deployment need separate
+acceptance checks before deployment.
 
 ## Monitor implementation
 
@@ -77,18 +78,17 @@ preload isolation for all HOME_, DEVICE_, EZVIZ_, POWER_ variables and bot
 secrets. No import-time singleton opens storage. The manual launcher shares
 ownership rules and never attaches Telegram.
 
-## PM2 modes
+## Source layout
 
-Run from the repository root:
+- `src/app.js` owns process startup, shutdown, and deadlines.
+- `src/config` loads environment settings.
+- `src/loaders` starts the scheduler and optional Telegram polling.
+- `src/cron/checkPowerStatus` contains the interval task and manual launcher.
+- `src/api/bot` and `src/middlewares/bot` handle Telegram commands and updates.
+- `src/services` contains monitor logic, storage, and external clients.
+- `src/utils` contains shared helpers.
+- `system/locales/bot` contains English and Russian Fluent strings.
+- `tests/unit` and `tests/fixtures` contain tests and controlled subprocesses.
 
-```shell
-pm2 start server.json
-pm2 start server.json --env dev
-pm2 start server.json --env prod
-```
-
-These select `local`, `dev` and `prod`, respectively. The alternate manifest
-`server_local.json` defaults to `local` and watches source and locale changes.
-Both manifests use one fork process and the same app name. Do not start multiple
-workers against the same storage directory. Local and dev modes enable debug
-logs. Mode must be selected before dotenv loading.
+See [module boundaries](module-boundaries.md) for import conventions and
+[operations](operations.md#pm2-and-storage) for PM2 manifests.

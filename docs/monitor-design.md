@@ -226,5 +226,6 @@ do not satisfy a three-sample streak. Monitoring defaults remain disabled.
 
 Local tests use temporary stores and fake transports. Live EZVIZ connectivity,
 physical outage inference, Telegram group privacy/deletion and production
-filesystem behavior require separate acceptance. See the [README](../README.md)
-for the production deployment workflow.
+filesystem behavior require separate acceptance. See
+[GitHub Actions deployment](operations.md#github-actions-deployment) for the
+production workflow.

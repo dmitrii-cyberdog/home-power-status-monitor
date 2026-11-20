@@ -1,11 +1,14 @@
 # Documentation
 
-- [Development guide](development.md): architecture, local configuration and
-  checks.
-- [Monitor design](monitor-design.md): implemented behavior and operational
-  decisions.
-- [EZVIZ research](ezviz-research.md): international API access, multiple-device
-  configuration proposal and power inference rules.
+- [Setup and operations](operations.md) covers configuration, Telegram commands,
+  PM2, and deployment.
+- [Monitor design](monitor-design.md) describes current power inference,
+  persistence, and notification behavior.
+- [Development guide](development.md) covers architecture, source layout, and
+  validation.
+- [Module boundaries](module-boundaries.md) describes import conventions.
+- [EZVIZ research](ezviz-research.md) records API findings and early design
+  proposals.
+- [Implementation plans and specs](superpowers/) record development history.
 
-The root [README](../README.md) describes installation, runtime commands and the
-current feature scope.
+See the [project README](../README.md) for the quick start.
