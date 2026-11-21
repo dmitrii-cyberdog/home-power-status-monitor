@@ -963,3 +963,70 @@ test('queue-full notices use the receiving chat preference', async t => {
     await Promise.all(pending)
   }
 })
+
+test('group notification interval requires an addressed command and authorization', async t => {
+  const { access, replies, send } = await notificationFixture(t)
+
+  await send('/notification_interval@power_test_bot 30 Family Home')
+  assert.match(replies.at(-1).payload.text, /not authorized/)
+
+  await access.authorize('-1007', 'test-only', 'en')
+  replies.length = 0
+
+  await send('/notification_interval 30 Family Home')
+  assert.equal(replies.length, 0)
+
+  await send('/notification_interval@power_test_bot 30 Family Home')
+  assert.match(replies.at(-1).payload.text, /30/)
+  assert.equal(access.getIntervalMinutes('-1007', '1'), 30)
+})
+
+test('private notification interval sets, resets and disables recurring updates', async t => {
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+  })
+
+  await access.authorize('7', 'test-only', 'en')
+
+  await send('/notification_interval 30')
+  assert.match(replies.at(-1).payload.text, /30/)
+  assert.equal(access.getIntervalMinutes('7', '1'), 30)
+
+  await send('/notification_interval default')
+  assert.match(replies.at(-1).payload.text, /default/i)
+  assert.match(
+    replies.at(-1).payload.text,
+    new RegExp(String(access.getIntervalMinutes('7', '1'))),
+  )
+
+  await send('/notification_interval 0')
+  assert.match(replies.at(-1).payload.text, /off/i)
+  assert.equal(access.getIntervalMinutes('7', '1'), 0)
+
+  await send('/notification_interval 45 family home')
+  assert.equal(access.getIntervalMinutes('7', '1'), 45)
+})
+
+test('notification interval rejects invalid input and unknown homes', async t => {
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+  })
+
+  await access.authorize('7', 'test-only', 'en')
+
+  for (const text of [
+    '/notification_interval 4',
+    '/notification_interval 10081',
+    '/notification_interval abc',
+    '/notification_interval',
+  ]) {
+    await send(text)
+    assert.match(replies.at(-1).payload.text, /5/)
+    assert.match(replies.at(-1).payload.text, /10080/)
+  }
+
+  assert.equal(replies.at(-1).payload.reply_markup, undefined)
+
+  await send('/notification_interval 30 Missing')
+  assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
+})

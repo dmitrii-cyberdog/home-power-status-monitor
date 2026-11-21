@@ -6,6 +6,7 @@ help =
     📊 /status_full [home name] — detailed status and history
     🔔 /on_notification <home name> — enable notifications
     🔕 /off_notification <home name> — disable notifications
+    ⏱ /notification_interval <minutes|default|0> [home name] — set recurring status interval
     🌐 /en or /ru — change this chat’s language
 help_private_access =
     🏠 Home Power Status Monitor
@@ -48,7 +49,11 @@ subscription_enabled = 🔔 Notifications enabled.
 subscription_already_enabled = 🔔 Notifications already enabled.
 subscription_disabled = 🔕 Notifications disabled.
 subscription_already_disabled = 🔕 Notifications already disabled.
-subscription_button_enable = 🔔 Enable notifications
+interval_set = ⏱ Recurring status for { $home }: every { $minutes } min.
+interval_off = ⏱ Recurring status updates for { $home } are off.
+interval_reset = ⏱ Recurring status for { $home } reset to default: every { $minutes } min.
+interval_usage = ℹ️ Use /notification_interval <minutes|default> [home name]. Minutes: 5 to 10080, or 0 to turn recurring updates off. The home name can be omitted when only one home is configured.
+subscription_button_enable =🔔 Enable notifications
 subscription_button_disable = 🔕 Disable notifications
 monitor_none = No observation
 monitor_baseline = Initial baseline; actual start unknown

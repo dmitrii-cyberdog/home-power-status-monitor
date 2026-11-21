@@ -11,8 +11,15 @@ import {
   monitorMessages,
 } from '../../../services'
 
+import { parseIntervalArguments } from './intervalArguments'
+
 const notificationCommands = ['on_notification', 'off_notification']
-const monitorCommands = ['status', 'status_full', ...notificationCommands]
+const monitorCommands = [
+  'status',
+  'status_full',
+  'notification_interval',
+  ...notificationCommands,
+]
 const subscriptionAction = /^subscription:(on|off):([1-9]\d*)$/
 
 const subscriptionKeyboard = (ctx, homeId, enabled) =>
@@ -180,6 +187,43 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
   protectedCommands.use(createAccessHandler({ access }))
 
   protectedCommands.on('message:text', async ctx => {
+    if (ctx.hasCommand('notification_interval')) {
+      const parsed = parseIntervalArguments(
+        ctx.match,
+        homeMonitor.getStatuses().map(({ id, name }) => ({ id, name })),
+      )
+
+      if (parsed.error) {
+        await ctx.reply(
+          ctx.t(
+            parsed.error === 'usage' ? 'interval_usage' : 'monitor_not_found',
+          ),
+        )
+
+        return
+      }
+
+      const chatId = String(ctx.chat.id)
+
+      await access.setInterval(chatId, parsed.home.id, parsed.minutes)
+
+      const effective = access.getIntervalMinutes(chatId, parsed.home.id)
+
+      const variables = { home: parsed.home.name, minutes: String(effective) }
+
+      let key = 'interval_set'
+
+      if (parsed.minutes === null) {
+        key = 'interval_reset'
+      } else if (effective === 0) {
+        key = 'interval_off'
+      }
+
+      await ctx.reply(ctx.t(key, variables))
+
+      return
+    }
+
     const replyCommand = notificationReply(ctx)
 
     const command = replyCommand ?? ctx.message.text.split(/[\s@]/)[0].slice(1)

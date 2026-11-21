@@ -6,6 +6,7 @@ help =
     📊 /status_full [название дома] — подробная сводка и история
     🔔 /on_notification <название дома> — включить уведомления
     🔕 /off_notification <название дома> — выключить уведомления
+    ⏱ /notification_interval <минуты|default|0> [название дома] — задать интервал регулярных сводок
     🌐 /en или /ru — сменить язык чата
 help_private_access =
     🏠 Home Power Status Monitor
@@ -48,7 +49,11 @@ subscription_enabled = 🔔 Уведомления включены.
 subscription_already_enabled = 🔔 Уведомления уже включены.
 subscription_disabled = 🔕 Уведомления отключены.
 subscription_already_disabled = 🔕 Уведомления уже отключены.
-subscription_button_enable = 🔔 Включить уведомления
+interval_set = ⏱ Регулярная сводка для { $home }: каждые { $minutes } мин.
+interval_off = ⏱ Регулярные сводки для { $home } отключены.
+interval_reset = ⏱ Регулярная сводка для { $home } сброшена на значение по умолчанию: каждые { $minutes } мин.
+interval_usage = ℹ️ Используйте /notification_interval <минуты|default> [название дома]. Минуты: от 5 до 10080, или 0, чтобы отключить регулярные сводки. Название дома можно не указывать, если настроен только один дом.
+subscription_button_enable =🔔 Включить уведомления
 subscription_button_disable = 🔕 Отключить уведомления
 monitor_none = Нет наблюдений
 monitor_baseline = Первое наблюдение; фактическое начало неизвестно

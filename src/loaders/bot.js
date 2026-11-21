@@ -102,6 +102,10 @@ export default async (signal, monitorRuntime) => {
     { command: 'status_full', description: 'Show detailed home status' },
     { command: 'on_notification', description: 'Enable home notifications' },
     { command: 'off_notification', description: 'Disable home notifications' },
+    {
+      command: 'notification_interval',
+      description: 'Set recurring status interval',
+    },
   ])
 
   if (signal?.aborted) {
