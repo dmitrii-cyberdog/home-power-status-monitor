@@ -276,13 +276,26 @@ export const renderPowerAlert = (delivery, home, t) => {
 
   if (!outage && previousOffAt) {
     lines.push(
-      `🔌 ${t('monitor_outage_detected_at')}: ${homeTimestamp(previousOffAt, t, home.timeZone, notificationFormat)}`,
+      `🔌 ${t('monitor_restored_off_at')} ${homeTimestamp(previousOffAt, t, home.timeZone, notificationFormat)}`,
     )
   }
 
-  if (precedingStateMs != null) {
+  if (!outage) {
+    // Without observed continuity the time between detections is only approximate.
+    const elapsed = previousOffAt
+      ? Date.parse(delivery.detectedAt) - Date.parse(previousOffAt)
+      : -1
+
+    const downtime = precedingStateMs ?? (elapsed >= 0 ? elapsed : null)
+
+    if (downtime != null) {
+      lines.push(
+        `⏱ ${t('monitor_restored_downtime')} ${precedingStateMs == null ? '≈ ' : ''}${duration(downtime, t, true)}`,
+      )
+    }
+  } else if (precedingStateMs != null) {
     lines.push(
-      `⏱ ${t(outage ? 'monitor_observed_uptime' : 'monitor_observed_downtime')}: ${duration(precedingStateMs, t, true)}`,
+      `⏱ ${t('monitor_observed_uptime')}: ${duration(precedingStateMs, t, true)}`,
     )
   }
 

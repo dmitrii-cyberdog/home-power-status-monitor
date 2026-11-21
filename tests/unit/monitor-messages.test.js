@@ -397,9 +397,9 @@ test('transition alerts show localized episode history and omit unsupported dura
 
   assert.match(
     restored,
-    /🔌 Outage detected at: 20\.11\.2026 10:00:00 \(local time\)/,
+    /🔌 Power went off at 20\.11\.2026 10:00:00 \(local time\)/,
   )
-  assert.match(restored, /Observed time without power: 1 hour 30 minutes/)
+  assert.match(restored, /⏱ Power was out for 1 hour 30 minutes/)
 
   const outage = render('off', '2026-11-20T12:00:00.000Z', {
     previousOffAt,
@@ -422,6 +422,57 @@ test('transition alerts show localized episode history and omit unsupported dura
 
   assert.match(uncertain, /20\.11\.2026 10:00:00 \(местн\. вр\.\)/)
   assert.doesNotMatch(uncertain, /Время с электричеством|Между обнаружениями/)
+})
+
+test('restore alerts show off time and downtime, approximate when continuity is unknown', () => {
+  const render = (delivery, locale = 'en') =>
+    messages.renderPowerAlert(
+      { state: 'on', ...delivery },
+      home({ timeZone: 'GMT+3' }),
+      translate(locale),
+    )[0]
+
+  const previousOffAt = '2026-11-20T15:58:43.000Z'
+
+  const detectedAt = '2026-11-21T12:37:50.000Z'
+
+  const approximate = render(
+    {
+      detectedAt,
+      uncertain: true,
+      history: { previousOffAt, precedingStateMs: null },
+    },
+    'ru',
+  )
+
+  assert.match(
+    approximate,
+    /🔌 Было отключено в 20\.11\.2026 18:58:43 \(местн\. вр\.\)\n⏱ Электричество отсутствовало ≈ 20 часов 39 минут/,
+  )
+  assert.match(approximate, /⚠️ Непрерывность неизвестна/)
+  assert.doesNotMatch(approximate, /Отключение обнаружено/)
+
+  const observed = render({
+    detectedAt,
+    uncertain: false,
+    history: { previousOffAt, precedingStateMs: 5400000 },
+  })
+
+  assert.match(observed, /🔌 Power went off at 20\.11\.2026 18:58:43/)
+  assert.match(observed, /⏱ Power was out for 1 hour 30 minutes/)
+  assert.doesNotMatch(observed, /≈|⚠️/)
+
+  const reversed = render({
+    detectedAt: '2026-11-20T10:00:00.000Z',
+    history: { previousOffAt, precedingStateMs: null },
+  })
+
+  assert.match(reversed, /Power went off at/)
+  assert.doesNotMatch(reversed, /Power was out for/)
+
+  const baseline = render({ detectedAt })
+
+  assert.doesNotMatch(baseline, /Power went off at|Power was out for/)
 })
 
 test('manual status timestamps follow each home offset, including device observations', () => {
