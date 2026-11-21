@@ -22,6 +22,7 @@ const notificationFixture = async (
   {
     chat = { id: -1007, type: 'supergroup', title: 'Home' },
     name = 'Family Home',
+    notificationIntervalMinutes,
     admins = [],
     secret = 'test-only',
     check,
@@ -39,7 +40,9 @@ const notificationFixture = async (
     await fs.rm(directory, { recursive: true, force: true })
   })
 
-  const homes = [{ id: '1', name, status: 'unknown' }]
+  const homes = [
+    { id: '1', name, status: 'unknown', notificationIntervalMinutes },
+  ]
 
   const access = createChatAccess({ store, homes, secret })
 
@@ -1016,6 +1019,22 @@ test('resetting the interval when the home default is off says updates are off',
   assert.match(replies.at(-1).payload.text, /off/i)
   assert.match(replies.at(-1).payload.text, /default/i)
   assert.doesNotMatch(replies.at(-1).payload.text, /every 0/)
+})
+
+test('resetting the interval reports a non-zero home default', async t => {
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    notificationIntervalMinutes: 60,
+  })
+
+  await access.authorize('7', 'test-only', 'en')
+  await send('/notification_interval 30')
+  assert.equal(access.getIntervalMinutes('7', '1'), 30)
+
+  await send('/notification_interval default')
+  assert.equal(access.getIntervalMinutes('7', '1'), 60)
+  assert.match(replies.at(-1).payload.text, /every \D*60\D* min/)
+  assert.match(replies.at(-1).payload.text, /default/i)
 })
 
 test('notification interval rejects invalid input and unknown homes', async t => {
