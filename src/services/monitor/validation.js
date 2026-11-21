@@ -21,6 +21,9 @@ export const isChatId = value =>
   chatIdPattern.test(value) &&
   Number.isSafeInteger(Number(value))
 
+export const isIntervalMinutes = value =>
+  value === 0 || (Number.isSafeInteger(value) && value >= 5 && value <= 10080)
+
 const isPowerState = value => ['on', 'off'].includes(value)
 
 const isObservationState = value => isPowerState(value) || value === 'unknown'
@@ -119,9 +122,23 @@ const chatFields = {
     ),
 }
 
-const legacyChatRecord = strictShape(chatFields)
+const intervalFields = {
+  intervals: value =>
+    isObject(value) &&
+    Object.entries(value).every(
+      ([homeId, minutes]) => isHomeId(homeId) && isIntervalMinutes(minutes),
+    ),
+}
 
-const chatRecord = strictShape({ ...chatFields, grantId: isOptionalText })
+const legacyChatRecords = [
+  strictShape(chatFields),
+  strictShape({ ...chatFields, ...intervalFields }),
+]
+
+const chatRecords = [
+  strictShape({ ...chatFields, grantId: isOptionalText }),
+  strictShape({ ...chatFields, grantId: isOptionalText, ...intervalFields }),
+]
 
 const chatRegistry = strictShape({
   version: isVersionOne,
@@ -131,7 +148,8 @@ const chatRegistry = strictShape({
     isObject(value) &&
     Object.entries(value).every(
       ([id, chat]) =>
-        isChatId(id) && (legacyChatRecord(chat) || chatRecord(chat)),
+        isChatId(id) &&
+        [...legacyChatRecords, ...chatRecords].some(record => record(chat)),
     ),
 })
 

@@ -277,6 +277,64 @@ export const createChatAccess = ({
 
       return result
     },
+    async setInterval(chatId, homeId, minutes) {
+      const id = String(chatId)
+
+      if (!isAuthorized(id) || !known.has(homeId)) {
+        throw new Error('Access denied')
+      }
+
+      await store.updateChats(registry => {
+        if (!isAuthorizedIn(registry.chats[id], registry.generation)) {
+          throw new Error('Access denied')
+        }
+
+        const chat = registry.chats[id]
+
+        if (minutes === null) {
+          delete chat.intervals?.[homeId]
+
+          if (chat.intervals && Object.keys(chat.intervals).length === 0) {
+            delete chat.intervals
+          }
+        } else {
+          chat.intervals ??= {} // Recurring status interval in minutes keyed by home ID. Absent until first set.
+          chat.intervals[homeId] = minutes
+        }
+
+        return registry
+      })
+    },
+    getIntervalMinutes(chatId, homeId, registry) {
+      const chat = registry
+        ? registry.chats[String(chatId)]
+        : store.readChat(chatId).chat
+
+      const home = homes.find(item => item.id === homeId)
+
+      return chat?.intervals?.[homeId] ?? home?.notificationIntervalMinutes ?? 0
+    },
+    listGroups() {
+      const registry = store.readChats()
+
+      return Object.entries(registry.chats)
+        .filter(
+          ([chatId, chat]) =>
+            chatId.startsWith('-') && isAuthorizedIn(chat, registry.generation),
+        )
+        .sort(([left], [right]) => Number(left) - Number(right))
+        .map(([chatId, chat]) => ({
+          chatId,
+          homes: homes.map(home => ({
+            homeId: home.id,
+            subscribed: Boolean(chat.subscriptions[home.id]),
+            intervalMinutes:
+              chat.intervals?.[home.id] ??
+              home.notificationIntervalMinutes ??
+              0,
+          })),
+        }))
+    },
     async clearChats(target) {
       let removed = 0
 

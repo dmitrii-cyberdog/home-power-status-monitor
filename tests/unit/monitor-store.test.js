@@ -142,6 +142,45 @@ test('chat registry accepts legacy and current grant IDs but rejects malformed o
   }
 })
 
+test('chat registry accepts valid per-chat intervals and rejects out-of-range ones', () => {
+  const chat = { authorizedGeneration: 'g', locale: 'en', subscriptions: {} }
+
+  const registry = chats => ({
+    ...monitorRecords.createChatRegistry(),
+    generation: 'g',
+    chats,
+  })
+
+  const withGrant = { ...chat, grantId: null }
+
+  for (const base of [chat, withGrant]) {
+    for (const minutes of [0, 5, 10080]) {
+      assert.doesNotThrow(() =>
+        monitorValidation.validateChatRegistry(
+          registry({ 7: { ...base, intervals: { 1: minutes } } }),
+        ),
+      )
+    }
+
+    assert.doesNotThrow(() =>
+      monitorValidation.validateChatRegistry(registry({ 7: base })),
+    )
+
+    for (const minutes of [4, 10081, 5.5, '5', null]) {
+      assert.throws(
+        () =>
+          monitorValidation.validateChatRegistry(
+            registry({ 7: { ...base, intervals: { 1: minutes } } }),
+          ),
+        /Invalid chat registry/,
+      )
+    }
+  }
+
+  assert.equal(monitorValidation.isIntervalMinutes(0), true)
+  assert.equal(monitorValidation.isIntervalMinutes(4), false)
+})
+
 test('stored verifiers require hex strings and an active generation', () => {
   const salt = 'a'.repeat(32)
   const digest = 'b'.repeat(128)

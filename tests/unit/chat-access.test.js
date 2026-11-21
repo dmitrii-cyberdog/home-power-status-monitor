@@ -303,3 +303,93 @@ test('chat language selections survive a storage restart without creating a gran
   assert.equal(access.isAuthorized('7'), false)
   assert.equal(access.getLocale('9'), undefined)
 })
+
+test('chat interval overrides persist, survive toggles and reset to the home default', async t => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'monitor-interval-'),
+  )
+
+  let store = await openMonitorStore({ directory, homeIds: ['1'] })
+
+  t.after(async () => {
+    await store.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const homes = [{ id: '1', notificationIntervalMinutes: 60 }]
+
+  const make = () => createChatAccess({ store, secret: 'secret', homes })
+
+  let access = make()
+
+  await access.initialize()
+  await access.authorize('7', 'secret', 'en')
+
+  assert.equal(access.getIntervalMinutes('7', '1'), 60)
+
+  await access.setInterval('7', '1', 30)
+
+  assert.equal(access.getIntervalMinutes('7', '1'), 30)
+  assert.equal(access.getIntervalMinutes('7', '1', store.readChats()), 30)
+
+  await access.setSubscription('7', '1', true)
+
+  assert.deepEqual(Object.keys(access.recipients('1', store.readChats())[0]), [
+    'chatId',
+    'generation',
+    'subscriptionId',
+    'locale',
+  ])
+
+  await access.setSubscription('7', '1', false)
+  await access.setSubscription('7', '1', true)
+
+  assert.equal(access.getIntervalMinutes('7', '1'), 30)
+
+  await store.close()
+
+  store = await openMonitorStore({ directory, homeIds: ['1'] })
+  access = make()
+
+  await access.initialize()
+
+  assert.equal(access.getIntervalMinutes('7', '1'), 30)
+
+  await access.setInterval('7', '1', null)
+
+  assert.equal(access.getIntervalMinutes('7', '1'), 60)
+  assert.equal(Object.hasOwn(store.readChats().chats['7'], 'intervals'), false)
+
+  await assert.rejects(access.setInterval('8', '1', 30), /Access denied/)
+  await assert.rejects(access.setInterval('7', '2', 30), /Access denied/)
+})
+
+test('listGroups returns approved groups only', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-groups-'))
+  const store = await openMonitorStore({ directory, homeIds: ['1'] })
+
+  t.after(async () => {
+    await store.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const access = createChatAccess({
+    store,
+    secret: 'secret',
+    homes: [{ id: '1', notificationIntervalMinutes: 60 }],
+  })
+
+  await access.initialize()
+  await access.authorizeGroup('-1007', 'en')
+  await access.authorize('7', 'secret', 'en')
+  await access.setLocale('-2000', 'en')
+  await access.setSubscription('-1007', '1', true)
+  await access.setInterval('-1007', '1', 15)
+
+  assert.deepEqual(access.listGroups(), [
+    {
+      chatId: '-1007',
+      homes: [{ homeId: '1', subscribed: true, intervalMinutes: 15 }],
+    },
+  ])
+})
