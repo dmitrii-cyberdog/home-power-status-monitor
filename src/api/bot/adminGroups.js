@@ -323,16 +323,23 @@ export const createAdminGroupCommands = ({
 
     const [, kind] = action
 
+    const editCard = async (text, extra) => {
+      try {
+        await ctx.editMessageText(text, extra)
+      } catch {
+        ctx.log?.warning('group_card_edit_failed', {
+          updateId: ctx.update.update_id,
+        })
+      }
+    }
+
     if (kind === 'del') {
       await ctx.answerCallbackQuery()
-      await ctx.editMessageText(
-        `${header}\n\n${ctx.t('admin_groups_delete_confirm')}`,
-        {
-          reply_markup: new InlineKeyboard()
-            .text(ctx.t('admin_groups_button_confirm'), `grp:delok:${chatId}`)
-            .text(ctx.t('admin_groups_button_cancel'), `grp:cancel:${chatId}`),
-        },
-      )
+      await editCard(`${header}\n\n${ctx.t('admin_groups_delete_confirm')}`, {
+        reply_markup: new InlineKeyboard()
+          .text(ctx.t('admin_groups_button_confirm'), `grp:delok:${chatId}`)
+          .text(ctx.t('admin_groups_button_cancel'), `grp:cancel:${chatId}`),
+      })
 
       return
     }
@@ -342,14 +349,21 @@ export const createAdminGroupCommands = ({
 
       const { text, reply_markup } = card()
 
-      await ctx.editMessageText(text, { reply_markup })
+      await editCard(text, { reply_markup })
 
       return
     }
 
-    await access.clearChats(chatId)
+    try {
+      await access.clearChats(chatId)
+    } catch (error) {
+      await ctx.answerCallbackQuery()
+
+      throw error
+    }
+
     await ctx.answerCallbackQuery()
-    await ctx.editMessageText(`${header}\n\n${ctx.t('admin_groups_deleted')}`)
+    await editCard(`${header}\n\n${ctx.t('admin_groups_deleted')}`)
   })
 
   return composer

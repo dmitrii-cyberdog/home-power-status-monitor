@@ -1228,6 +1228,55 @@ test('deleting a group asks for confirmation and keeps the bot silent', async t 
   assert.deepEqual(groupCalls(replies), [])
 })
 
+test('group delete survives a failing card edit and still answers the callback', async t => {
+  let failEdit = false
+
+  const fixture = await adminFixture(t, {
+    hold: method => {
+      if (failEdit && method === 'editMessageText') {
+        throw new Error('Bad Request: message is not modified')
+      }
+    },
+  })
+
+  const { access, replies, click } = fixture
+
+  const card = await groupCard(fixture)
+
+  failEdit = true
+  replies.length = 0
+
+  await click(card, 'grp:del:-1007')
+  await click(card, 'grp:cancel:-1007')
+  await click(card, 'grp:delok:-1007')
+
+  assert.equal(access.isAuthorized('-1007'), false)
+  assert.deepEqual(
+    replies.map(({ method }) => method),
+    ['answerCallbackQuery', 'answerCallbackQuery', 'answerCallbackQuery'],
+  )
+})
+
+test('group delete answers the callback before rethrowing a storage failure', async t => {
+  const fixture = await adminFixture(t)
+
+  const { access, replies, click } = fixture
+
+  const card = await groupCard(fixture)
+
+  access.clearChats = async () => {
+    throw new Error('disk full')
+  }
+
+  replies.length = 0
+
+  await assert.rejects(click(card, 'grp:delok:-1007'), /disk full/)
+  assert.deepEqual(
+    replies.map(({ method }) => method),
+    ['answerCallbackQuery'],
+  )
+})
+
 test('stale group cards answer not found without writing', async t => {
   const fixture = await adminFixture(t)
 

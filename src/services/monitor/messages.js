@@ -135,17 +135,19 @@ const summaryLines = (home, t, timestamp, brief = false) => {
 
     lines.push([''], ...since)
 
-    const oppositeAt = timestamp(
-      home[opposite === 'on' ? 'lastOn' : 'lastOff']?.detectedAt,
-    )
+    const oppositeEpisode = home[opposite === 'on' ? 'lastOn' : 'lastOff']
+
+    const oppositeAt = timestamp(oppositeEpisode?.detectedAt)
 
     if (brief) {
-      lines.push(
-        [''],
-        [
-          `${stateIcons[opposite]} ${t(`monitor_before_${opposite}`)} ${oppositeAt}`,
-        ],
-      )
+      if (oppositeEpisode) {
+        lines.push(
+          [''],
+          [
+            `${stateIcons[opposite]} ${t(`monitor_before_${opposite}`)} ${oppositeAt}`,
+          ],
+        )
+      }
     } else {
       lines.push([
         `${stateIcons[opposite]} ${t(`monitor_last_${opposite}`)}: ${oppositeAt}`,

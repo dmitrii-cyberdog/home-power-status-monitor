@@ -44,12 +44,13 @@ to cross-check the device identity. The supported EZVIZ base URL is
 - `HOME_<id>_TIME_ZONE` controls timestamps in Telegram. Home 1 defaults to
   fixed `GMT+2` year-round. Other homes default to `UTC`. Use `UTC` or a fixed
   offset such as `GMT-3:30`. Stored timestamps use UTC.
-- `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` sends recurring status to the home's
-  existing subscribers. Use whole minutes. Omit it or set it to `0` to disable
-  recurring updates. The first update is due one interval after the notification
-  worker starts and uses cached status. Chats can override it with
-  `/notification_interval`; admins can override it for groups with
-  `/group_interval`.
+- `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` is the default recurring status
+  interval for the home's existing subscribers. Use whole minutes. Omit it or
+  set it to `0` for no default updates. Each chat can set its own interval with
+  `/notification_interval`; admins can set one for a group with
+  `/group_interval`. The first update is due one interval after the notification
+  worker starts, the chat subscribes or its interval changes, and uses cached
+  status.
 
 For older installations, use `NODE_ENV=dev` or `NODE_ENV=prod` and replace
 `CRON_CHECK_POWER_STATUS_TEMPLATE` with `POWER_CHECK_INTERVAL_SECONDS`. The
@@ -95,9 +96,9 @@ the groups:
 
 These commands accept only negative group IDs; a group that is not currently
 approved is reported as not found. The delete button asks for confirmation, then
-removes the group's access, subscriptions and intervals like
-`/clear_chats <chat_id>`. The bot stays in the group; approve it again with
-`/authorize_group` to restore access.
+removes the whole group record (access, subscriptions, intervals and saved
+language) like `/clear_chats <chat_id>`. The bot stays in the group; approve it
+again with `/authorize_group` to restore access.
 
 With `TG_BOT_TOKEN` and `TG_ADMIN_1` set, the primary admin receives startup
 notices and brief error alerts. The admin must first open a private chat with

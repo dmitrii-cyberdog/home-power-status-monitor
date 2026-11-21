@@ -149,11 +149,11 @@ in that admin's private chat, and the group's current approval is rechecked
 before any change, so a stale card answers "group not found" without writing. A
 toggle answers with the subscription result and edits the card in place. Delete
 first edits the card into a confirmation (`grp:delok` / `grp:cancel`); cancel
-restores the card, and confirmation clears the group record like
-`/clear_chats <chat_id>`, so pending deliveries are skipped by the dispatch
-guard. The bot stays a member of the group. `/group_on <chat_id> [home name]`,
-`/group_off <chat_id> [home name]` and
-`/group_interval <chat_id> <minutes|default|0> [home name]` do the same from
+restores the card, and confirmation clears the whole group record (access,
+subscriptions, intervals and saved language) like `/clear_chats <chat_id>`, so
+pending deliveries are skipped by the dispatch guard. The bot stays a member of
+the group. `/group_on <chat_id> [home name]`, `/group_off <chat_id> [home name]`
+and `/group_interval <chat_id> <minutes|default|0> [home name]` do the same from
 typed commands; without a home name they apply to every configured home. They
 accept only negative chat IDs, and a group that is not approved in the current
 generation is reported as not found.
@@ -188,14 +188,15 @@ home's fixed offset and includes the zone label. Both manual status commands use
 each home’s configured zone, including device observation times in
 `/status_full`.
 
-When `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` is positive, the notification
-worker sends the brief cached status to current subscribers on that home's
-cadence. The first update is due one interval after startup, and the schedule
-resets on restart. It checks for due updates at least once per minute while
-idle, coalesces missed intervals, and skips a failed update until the next
+The notification worker sends the brief cached status to current subscribers on
+each subscriber's effective interval: the chat override, else the
+`HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` home default. An omitted or zero home
+default disables updates only for chats without an override. The first update is
+due one interval after startup, subscribing or an interval change, and the
+schedule resets on restart. It checks for due updates at least once per minute
+while idle, coalesces missed intervals, and skips a failed update until the next
 scheduled one after the Telegram transport's own retries. It uses the same
-subscription and locale guards as transition alerts. An omitted or zero interval
-disables these updates.
+subscription and locale guards as transition alerts.
 
 Each chat can override the interval per home with
 `/notification_interval <minutes|default|0> [home name]` (addressed form in

@@ -115,7 +115,7 @@ test('brief status shows only current state, duration and opposite detection', (
 
   assert.match(on, /⏱ For 2 days 3 hours/)
   assert.match(on, /since detection/)
-  assert.match(on, /Before that, power went off at Not observed/)
+  assert.doesNotMatch(on, /Before that|Not observed/)
   assert.doesNotMatch(on, /Cumulative|outages|Last observation|auth_failed/)
 
   const off = renderStatusMessages([home({ status: 'off' })], t).join('\n')
@@ -125,6 +125,27 @@ test('brief status shows only current state, duration and opposite detection', (
     off,
     /✅ Before that, power came on at 01\.01\.1970 00:00 \(local time\)/,
   )
+})
+
+test('brief status omits the previous-change line when the opposite state was never observed', () => {
+  for (const [locale, before, missing] of [
+    ['en', /Before that/, /Not observed/],
+    ['ru', /До этого/, /Нет наблюдений/],
+  ]) {
+    const t = translate(locale)
+
+    const on = renderStatusMessages([home()], t).join('\n')
+
+    const off = renderStatusMessages(
+      [home({ status: 'off', lastOn: null })],
+      t,
+    ).join('\n')
+
+    for (const text of [on, off]) {
+      assert.doesNotMatch(text, before)
+      assert.doesNotMatch(text, missing)
+    }
+  }
 })
 
 test('brief duration boundaries use readable localized units', () => {
