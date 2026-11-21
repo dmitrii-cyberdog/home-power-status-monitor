@@ -36,6 +36,12 @@ admin_help =
 
     👥 /authorize_group <chat_id> — approve a group. Send { $helpCommand } in the group to get its negative chat ID.
 
+    📋 /groups — list connected groups with notification and delete buttons.
+    🔔 /group_on <chat_id> [home name] — enable a group’s notifications.
+    🔕 /group_off <chat_id> [home name] — disable a group’s notifications.
+    ⏱ /group_interval <chat_id> <minutes|default|0> [home name] — set a group’s recurring status interval.
+    🤫 Without a home name these commands change every home. Nothing is posted to the group.
+
     🧹 /clear_chats <chat_id> — remove one chat’s access and notification subscriptions.
     🧹 /clear_chats all — remove access and notification subscriptions for every chat.
 
@@ -45,6 +51,24 @@ admin_authorize_group_usage = ℹ️ Use /authorize_group <chat_id> with a negat
 admin_group_authorized = ✅ Group authorized.
 admin_chat_not_found = 🔍 Chat record not found.
 admin_chats_cleared = 🧹 Chat records removed: { $count }.
+admin_groups_none = 👥 No connected groups.
+admin_groups_title = 👥 { $title } ({ $chatId })
+admin_groups_title_unavailable = 👥 { $chatId } (title unavailable)
+admin_groups_home_on = 🏠 { $home }: 🔔 notifications on, { $interval }
+admin_groups_home_off = 🏠 { $home }: 🔕 notifications off, { $interval }
+admin_groups_interval = ⏱ every { $minutes } min
+admin_groups_interval_off = ⏱ no recurring updates
+admin_groups_button_enable = 🔔 Enable: { $home }
+admin_groups_button_disable = 🔕 Disable: { $home }
+admin_groups_button_delete = 🗑 Delete group
+admin_groups_delete_confirm = 🗑 Delete this group? It loses access, notification subscriptions and interval settings. The bot stays in the group and posts nothing there.
+admin_groups_button_confirm = ✅ Yes, delete
+admin_groups_button_cancel = ↩️ Cancel
+admin_groups_deleted = 🗑 Group deleted. The bot stays in the group; approve it again with /authorize_group to restore access.
+admin_groups_not_found = 🔍 Group not found.
+admin_group_home_result = 🏠 { $home }: { $result }
+admin_group_toggle_usage = ℹ️ Use /group_on <chat_id> [home name] or /group_off <chat_id> [home name] with a negative group chat ID. Without a home name, every home changes.
+admin_group_interval_usage = ℹ️ Use /group_interval <chat_id> <minutes|default> [home name] with a negative group chat ID. Minutes: 5 to 10080, or 0 to turn recurring updates off. Without a home name, every home changes.
 subscription_enabled = 🔔 Notifications enabled.
 subscription_already_enabled = 🔔 Notifications already enabled.
 subscription_disabled = 🔕 Notifications disabled.

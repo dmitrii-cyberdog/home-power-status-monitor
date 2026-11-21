@@ -137,6 +137,27 @@ group approval uses the service default when the group has no saved language.
 The alert dispatcher reads the recipient's current language before sending the
 first chunk, including on delivery retries.
 
+Allowlisted admins manage approved groups from their private chat. These admin
+actions are silent: the bot never sends or edits a message in the affected
+group. `/groups` lists groups whose ID is negative and whose grant is current,
+one private message per group. The title comes from a live `getChat` lookup;
+when that fails the card shows the ID marked unavailable. Each card shows, per
+configured home, the notification state and the effective recurring interval,
+with a toggle button per home (`grp:on|off:<chatId>:<homeId>`) and a delete
+button (`grp:del:<chatId>`). Callbacks are accepted only from an admin on a card
+in that admin's private chat, and the group's current approval is rechecked
+before any change, so a stale card answers "group not found" without writing. A
+toggle answers with the subscription result and edits the card in place. Delete
+first edits the card into a confirmation (`grp:delok` / `grp:cancel`); cancel
+restores the card, and confirmation clears the group record like
+`/clear_chats <chat_id>`, so pending deliveries are skipped by the dispatch
+guard. The bot stays a member of the group. `/group_on <chat_id> [home name]`,
+`/group_off <chat_id> [home name]` and
+`/group_interval <chat_id> <minutes|default|0> [home name]` do the same from
+typed commands; without a home name they apply to every configured home. They
+accept only negative chat IDs, and a group that is not approved in the current
+generation is reported as not found.
+
 Existing group grants survive routine restarts. If the secret has appeared in a
 group, rotate it after rollout and deliberately reapprove trusted groups and
 private chats; rotation invalidates all old grants by design.
@@ -175,6 +196,18 @@ idle, coalesces missed intervals, and skips a failed update until the next
 scheduled one after the Telegram transport's own retries. It uses the same
 subscription and locale guards as transition alerts. An omitted or zero interval
 disables these updates.
+
+Each chat can override the interval per home with
+`/notification_interval <minutes|default|0> [home name]` (addressed form in
+groups); an admin sets it for a group with `/group_interval`. Values are whole
+minutes from 5 to 10080, or `0` to turn recurring updates off for that chat; the
+5-minute minimum applies only to chat values. `default` removes the chat's
+override so it follows `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` again. The home
+name can be omitted when only one home is configured. Overrides are stored as
+optional `intervals` on the chat record and survive notification on/off. The
+effective interval is the chat override, else the home default. Cadence is kept
+in memory per chat and home; a changed effective interval restarts that chat's
+cadence from the current time.
 
 Delivery is at least once while pending: a crash after send and before saved ack
 can duplicate an event with the same event ID. Temporary failures retry on later

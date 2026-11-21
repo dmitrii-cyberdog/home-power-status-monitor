@@ -36,6 +36,12 @@ admin_help =
 
     👥 /authorize_group <chat_id> — авторизовать группу. Отправьте { $helpCommand } в группе, чтобы узнать её отрицательный ID.
 
+    📋 /groups — список подключённых групп с кнопками уведомлений и удаления.
+    🔔 /group_on <chat_id> [название дома] — включить уведомления группы.
+    🔕 /group_off <chat_id> [название дома] — отключить уведомления группы.
+    ⏱ /group_interval <chat_id> <минуты|default|0> [название дома] — задать интервал регулярных сводок группы.
+    🤫 Без названия дома эти команды меняют все дома. В группу ничего не отправляется.
+
     🧹 /clear_chats <chat_id> — удалить доступ и подписки на уведомления для одного чата.
     🧹 /clear_chats all — удалить доступ и подписки на уведомления для всех чатов.
 
@@ -45,6 +51,24 @@ admin_authorize_group_usage = ℹ️ Используйте /authorize_group <ch
 admin_group_authorized = ✅ Группа авторизована.
 admin_chat_not_found = 🔍 Запись чата не найдена.
 admin_chats_cleared = 🧹 Удалено записей чатов: { $count }.
+admin_groups_none = 👥 Нет подключённых групп.
+admin_groups_title = 👥 { $title } ({ $chatId })
+admin_groups_title_unavailable = 👥 { $chatId } (название недоступно)
+admin_groups_home_on = 🏠 { $home }: 🔔 уведомления включены, { $interval }
+admin_groups_home_off = 🏠 { $home }: 🔕 уведомления отключены, { $interval }
+admin_groups_interval = ⏱ каждые { $minutes } мин
+admin_groups_interval_off = ⏱ без регулярных сводок
+admin_groups_button_enable = 🔔 Включить: { $home }
+admin_groups_button_disable = 🔕 Отключить: { $home }
+admin_groups_button_delete = 🗑 Удалить группу
+admin_groups_delete_confirm = 🗑 Удалить эту группу? Она потеряет доступ, подписки на уведомления и настройки интервала. Бот останется в группе и ничего туда не отправит.
+admin_groups_button_confirm = ✅ Да, удалить
+admin_groups_button_cancel = ↩️ Отмена
+admin_groups_deleted = 🗑 Группа удалена. Бот остаётся в группе; чтобы вернуть доступ, снова авторизуйте её через /authorize_group.
+admin_groups_not_found = 🔍 Группа не найдена.
+admin_group_home_result = 🏠 { $home }: { $result }
+admin_group_toggle_usage = ℹ️ Используйте /group_on <chat_id> [название дома] или /group_off <chat_id> [название дома] с отрицательным ID группового чата. Без названия дома меняются все дома.
+admin_group_interval_usage = ℹ️ Используйте /group_interval <chat_id> <минуты|default> [название дома] с отрицательным ID группового чата. Минуты: от 5 до 10080, или 0, чтобы отключить регулярные сводки. Без названия дома меняются все дома.
 subscription_enabled = 🔔 Уведомления включены.
 subscription_already_enabled = 🔔 Уведомления уже включены.
 subscription_disabled = 🔕 Уведомления отключены.

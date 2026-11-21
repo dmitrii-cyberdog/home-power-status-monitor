@@ -47,7 +47,9 @@ to cross-check the device identity. The supported EZVIZ base URL is
 - `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` sends recurring status to the home's
   existing subscribers. Use whole minutes. Omit it or set it to `0` to disable
   recurring updates. The first update is due one interval after the notification
-  worker starts and uses cached status.
+  worker starts and uses cached status. Chats can override it with
+  `/notification_interval`; admins can override it for groups with
+  `/group_interval`.
 
 For older installations, use `NODE_ENV=dev` or `NODE_ENV=prod` and replace
 `CRON_CHECK_POWER_STATUS_TEMPLATE` with `POWER_CHECK_INTERVAL_SECONDS`. The
@@ -55,14 +57,15 @@ retired cron expression is ignored. Global `EZVIZ_` variables are rejected.
 
 ## Telegram commands
 
-| Command                         | Purpose                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| `/secret <value>`               | Authorize the current private chat.                                                         |
-| `/status [home name]`           | Show a brief power summary. A named query in a private chat includes a subscription button. |
-| `/status_full [home name]`      | Show history, estimated totals, and device diagnostics.                                     |
-| `/on_notification <home name>`  | Subscribe the current chat to alerts and any configured recurring updates.                  |
-| `/off_notification <home name>` | Unsubscribe the current chat.                                                               |
-| `/en` or `/ru`                  | Save the chat's language.                                                                   |
+| Command                                                    | Purpose                                                                                                                                                        |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/secret <value>`                                          | Authorize the current private chat.                                                                                                                            |
+| `/status [home name]`                                      | Show a brief power summary. A named query in a private chat includes a subscription button.                                                                    |
+| `/status_full [home name]`                                 | Show history, estimated totals, and device diagnostics.                                                                                                        |
+| `/on_notification <home name>`                             | Subscribe the current chat to alerts and any configured recurring updates.                                                                                     |
+| `/off_notification <home name>`                            | Unsubscribe the current chat.                                                                                                                                  |
+| `/notification_interval <minutes\|default\|0> [home name]` | Set the current chat's recurring status interval: 5 to 10080 minutes, `0` for off, `default` for the home setting. The home name can be omitted with one home. |
+| `/en` or `/ru`                                             | Save the chat's language.                                                                                                                                      |
 
 To set up a group, add the bot and use its setup message or
 `/help@your_bot_username` to get the group ID. A configured admin runs
@@ -79,6 +82,22 @@ In private chat, admins can use `/admin` to list admin commands.
 `/clear_chats <chat_id>` clears one chat and `/clear_chats all` clears the
 registry. Cleared chats must authorize again and re-enable subscriptions. Home
 history and power statistics are preserved.
+
+Admins manage approved groups from the private chat without posting anything to
+the groups:
+
+| Command                                                       | Purpose                                                                                                                                        |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/groups`                                                     | List approved groups, one message each: title (or the ID marked unavailable), per-home notification state and interval, toggle/delete buttons. |
+| `/group_on <chat_id> [home name]`                             | Enable a group's notifications for one home, or every home without a name.                                                                     |
+| `/group_off <chat_id> [home name]`                            | Disable a group's notifications for one home, or every home without a name.                                                                    |
+| `/group_interval <chat_id> <minutes\|default\|0> [home name]` | Set a group's recurring status interval for one home, or every home without a name.                                                            |
+
+These commands accept only negative group IDs; a group that is not currently
+approved is reported as not found. The delete button asks for confirmation, then
+removes the group's access, subscriptions and intervals like
+`/clear_chats <chat_id>`. The bot stays in the group; approve it again with
+`/authorize_group` to restore access.
 
 With `TG_BOT_TOKEN` and `TG_ADMIN_1` set, the primary admin receives startup
 notices and brief error alerts. The admin must first open a private chat with

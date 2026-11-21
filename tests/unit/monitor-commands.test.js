@@ -29,6 +29,7 @@ const notificationFixture = async (
     hold,
     throttled = false,
     limitPending = false,
+    unavailableChats = [],
   } = {},
 ) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-command-'))
@@ -64,17 +65,33 @@ const notificationFixture = async (
   bot.api.config.use(async (_previous, method, payload) => {
     await hold?.(method, payload)
 
-    const result =
-      method === 'sendMessage'
-        ? {
-            message_id: ++messageId,
-            date: 1,
-            chat,
-            from: bot.botInfo,
-            text: payload.text,
-            reply_markup: payload.reply_markup,
-          }
-        : true
+    if (
+      method === 'getChat' &&
+      unavailableChats.includes(String(payload.chat_id))
+    ) {
+      replies.push({ method, payload })
+
+      throw new Error('Chat unavailable')
+    }
+
+    let result = true
+
+    if (method === 'sendMessage' || method === 'editMessageText') {
+      result = {
+        message_id: method === 'sendMessage' ? ++messageId : payload.message_id,
+        date: 1,
+        chat,
+        from: bot.botInfo,
+        text: payload.text,
+        reply_markup: payload.reply_markup,
+      }
+    } else if (method === 'getChat') {
+      result = {
+        id: Number(payload.chat_id),
+        type: 'supergroup',
+        title: 'Family',
+      }
+    }
 
     replies.push({ method, payload, message: result })
 
@@ -1059,4 +1076,306 @@ test('notification interval rejects invalid input and unknown homes', async t =>
 
   await send('/notification_interval 30 Missing')
   assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
+})
+
+//
+//
+
+const plain = text => text.replace(/\p{Cf}/gu, '')
+
+const callbackData = markup =>
+  markup.inline_keyboard.flat().map(button => button.callback_data)
+
+const groupCalls = replies =>
+  replies.filter(({ payload }) => String(payload?.chat_id) === '-1007')
+
+const adminFixture = async (t, options = {}) => {
+  const fixture = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    admins: [7],
+    ...options,
+  })
+
+  await fixture.access.authorizeGroup('-1007')
+
+  return fixture
+}
+
+const groupCard = async ({ replies, send }) => {
+  replies.length = 0
+  await send('/groups')
+
+  return replies.find(({ method }) => method === 'sendMessage').message
+}
+
+test('admins list approved groups privately with controls', async t => {
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+    admins: [7],
+    notificationIntervalMinutes: 60,
+  })
+
+  await send('/groups')
+  assert.match(replies.at(-1).payload.text, /No connected groups/)
+
+  await access.authorizeGroup('-1007')
+  await access.authorize('8', 'test-only', 'en')
+  await access.setInterval('-1007', '1', 30)
+  replies.length = 0
+
+  await send('/groups')
+
+  const sent = replies.filter(({ method }) => method === 'sendMessage')
+
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].payload.chat_id, 7)
+
+  const text = plain(sent[0].payload.text)
+
+  assert.match(text, /Family \(-1007\)/)
+  assert.match(text, /Family Home/)
+  assert.match(text, /notifications off/)
+  assert.match(text, /every 30 min/)
+  assert.doesNotMatch(text, /\b8\b/)
+  assert.deepEqual(callbackData(sent[0].payload.reply_markup), [
+    'grp:on:-1007:1',
+    'grp:del:-1007',
+  ])
+
+  await access.setInterval('-1007', '1', 0)
+  await send('/groups')
+  assert.match(replies.at(-1).payload.text, /no recurring updates/)
+})
+
+test('a group card shows the ID when the title is unavailable', async t => {
+  const { replies, send } = await adminFixture(t, {
+    unavailableChats: ['-1007'],
+  })
+
+  await send('/groups')
+  assert.match(plain(replies.at(-1).payload.text), /-1007.*unavailable/)
+  assert.deepEqual(callbackData(replies.at(-1).payload.reply_markup), [
+    'grp:on:-1007:1',
+    'grp:del:-1007',
+  ])
+})
+
+test('group toggle buttons change notifications silently', async t => {
+  const fixture = await adminFixture(t)
+
+  const { access, replies, click } = fixture
+
+  const card = await groupCard(fixture)
+
+  replies.length = 0
+  await click(card, 'grp:on:-1007:1')
+  assert.equal(access.listGroups()[0].homes[0].subscribed, true)
+  assert.equal(replies[0].method, 'answerCallbackQuery')
+  assert.equal(replies[0].payload.text, '🔔 Notifications enabled.')
+
+  const edit = replies.find(({ method }) => method === 'editMessageText')
+
+  assert.equal(edit.payload.chat_id, 7)
+  assert.match(plain(edit.payload.text), /Family \(-1007\)/)
+  assert.match(plain(edit.payload.text), /notifications on/)
+  assert.deepEqual(callbackData(edit.payload.reply_markup), [
+    'grp:off:-1007:1',
+    'grp:del:-1007',
+  ])
+
+  await click(edit.message, 'grp:off:-1007:1')
+  assert.equal(access.listGroups()[0].homes[0].subscribed, false)
+  assert.deepEqual(groupCalls(replies), [])
+})
+
+test('deleting a group asks for confirmation and keeps the bot silent', async t => {
+  const fixture = await adminFixture(t)
+
+  const { access, replies, click } = fixture
+
+  const card = await groupCard(fixture)
+
+  replies.length = 0
+  await click(card, 'grp:del:-1007')
+
+  const confirm = replies.find(({ method }) => method === 'editMessageText')
+
+  assert.match(plain(confirm.payload.text), /Delete/)
+  assert.match(plain(confirm.payload.text), /Family \(-1007\)/)
+  assert.deepEqual(callbackData(confirm.payload.reply_markup), [
+    'grp:delok:-1007',
+    'grp:cancel:-1007',
+  ])
+  assert.equal(access.isAuthorized('-1007'), true)
+
+  await click(confirm.message, 'grp:cancel:-1007')
+
+  const restored = replies.at(-1)
+
+  assert.equal(restored.method, 'editMessageText')
+  assert.equal(restored.payload.text, card.text)
+  assert.deepEqual(restored.payload.reply_markup, card.reply_markup)
+
+  await click(restored.message, 'grp:del:-1007')
+  await click(replies.at(-1).message, 'grp:delok:-1007')
+  assert.equal(access.isAuthorized('-1007'), false)
+
+  const deleted = replies.at(-1)
+
+  assert.equal(deleted.method, 'editMessageText')
+  assert.match(plain(deleted.payload.text), /deleted/)
+  assert.equal(deleted.payload.reply_markup, undefined)
+  assert.deepEqual(groupCalls(replies), [])
+})
+
+test('stale group cards answer not found without writing', async t => {
+  const fixture = await adminFixture(t)
+
+  const { access, store, replies, click } = fixture
+
+  const card = await groupCard(fixture)
+
+  await access.clearChats('-1007')
+
+  const registry = JSON.stringify(store.readChats())
+
+  for (const data of [
+    'grp:on:-1007:1',
+    'grp:del:-1007',
+    'grp:delok:-1007',
+    'grp:cancel:-1007',
+  ]) {
+    replies.length = 0
+    await click(card, data)
+    assert.equal(replies.length, 1)
+    assert.equal(replies[0].method, 'answerCallbackQuery')
+    assert.match(replies[0].payload.text, /Group not found/)
+  }
+
+  assert.equal(JSON.stringify(store.readChats()), registry)
+})
+
+test('group callbacks are refused outside an admin private chat', async t => {
+  const fixture = await adminFixture(t)
+
+  const { access, replies, click } = fixture
+
+  const card = await groupCard(fixture)
+
+  for (const [message, sender] of [
+    [card, { id: 8, is_bot: false, first_name: 'Other' }],
+    [{ ...card, chat: { id: -1007, type: 'supergroup', title: 'Family' } }],
+    [{ ...card, chat: { id: 9, type: 'private', first_name: 'Other' } }],
+    [{ ...card, date: 0 }],
+  ]) {
+    replies.length = 0
+    await click(message, 'grp:on:-1007:1', sender)
+    await click(message, 'grp:delok:-1007', sender)
+    assert.deepEqual(
+      replies.map(({ method }) => method),
+      ['answerCallbackQuery', 'answerCallbackQuery'],
+    )
+    assert.equal(access.isAuthorized('-1007'), true)
+    assert.equal(access.listGroups()[0].homes[0].subscribed, false)
+  }
+
+  replies.length = 0
+  await click(
+    { ...card, chat: { id: 8, type: 'private', first_name: 'Other' } },
+    'grp:on:-1007:1',
+    { id: 8, is_bot: false, first_name: 'Other' },
+  )
+  assert.equal(replies.length, 1)
+  assert.equal(replies[0].payload.text, '🔒 Admin access required.')
+  assert.equal(access.listGroups()[0].homes[0].subscribed, false)
+})
+
+test('typed group commands change notifications and intervals silently', async t => {
+  const { access, replies, send } = await adminFixture(t)
+
+  replies.length = 0
+
+  await send('/group_on -1007')
+  assert.match(plain(replies.at(-1).payload.text), /Family Home/)
+  assert.match(replies.at(-1).payload.text, /Notifications enabled/)
+  assert.equal(access.listGroups()[0].homes[0].subscribed, true)
+
+  await send('/group_off -1007 family home')
+  assert.match(replies.at(-1).payload.text, /Notifications disabled/)
+  assert.equal(access.listGroups()[0].homes[0].subscribed, false)
+
+  await send('/group_off -1007 Missing')
+  assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
+
+  await send('/group_interval -1007 30')
+  assert.equal(access.getIntervalMinutes('-1007', '1'), 30)
+  assert.match(replies.at(-1).payload.text, /every \D*30\D* min/)
+
+  await send('/group_interval -1007 default Family Home')
+  assert.equal(access.getIntervalMinutes('-1007', '1'), 0)
+  assert.match(replies.at(-1).payload.text, /default/)
+
+  await send('/group_interval -1007 30 Missing')
+  assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
+
+  for (const text of ['/group_on', '/group_on 1007', '/group_off abc']) {
+    await send(text)
+    assert.match(replies.at(-1).payload.text, /Use \/group_on/)
+  }
+
+  for (const text of [
+    '/group_interval',
+    '/group_interval 1007 30',
+    '/group_interval -1007',
+    '/group_interval -1007 4',
+  ]) {
+    await send(text)
+    assert.match(replies.at(-1).payload.text, /Use \/group_interval/)
+  }
+
+  for (const text of ['/group_on -1008', '/group_interval -1008 30']) {
+    await send(text)
+    assert.match(replies.at(-1).payload.text, /Group not found/)
+  }
+
+  assert.ok(replies.every(({ payload }) => payload.chat_id === 7))
+  assert.deepEqual(groupCalls(replies), [])
+})
+
+test('group admin commands are restricted to admins in private chats', async t => {
+  const ordinary = await adminFixture(t, { admins: [8] })
+
+  for (const text of [
+    '/groups',
+    '/group_on -1007',
+    '/group_interval -1007 30',
+  ]) {
+    await ordinary.send(text)
+    assert.equal(
+      ordinary.replies.at(-1).payload.text,
+      '🔒 Admin access required.',
+    )
+  }
+
+  assert.equal(ordinary.access.listGroups()[0].homes[0].subscribed, false)
+  assert.equal(ordinary.access.getIntervalMinutes('-1007', '1'), 0)
+
+  const group = await adminFixture(t, {
+    chat: { id: -1007, type: 'supergroup', title: 'Family' },
+  })
+
+  await group.send('/groups@power_test_bot')
+  await group.send('/group_on@power_test_bot -1007')
+  assert.deepEqual(group.replies, [])
+  assert.equal(group.access.listGroups()[0].homes[0].subscribed, false)
+
+  const admin = await adminFixture(t)
+
+  await admin.send('/admin')
+  assert.match(admin.replies.at(-1).payload.text, /\/groups/)
+  assert.match(admin.replies.at(-1).payload.text, /\/group_on <chat_id>/)
+  assert.match(admin.replies.at(-1).payload.text, /\/group_interval <chat_id>/)
+  await admin.send('/ru')
+  await admin.send('/admin')
+  assert.match(admin.replies.at(-1).payload.text, /\/group_off <chat_id>/)
 })
