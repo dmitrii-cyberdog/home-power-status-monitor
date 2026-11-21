@@ -84,7 +84,12 @@ test('committed rounds coalesce and deliveries retry independently without repla
 
 const cadenceFixture = async (
   t,
-  { intervalSeconds = 60, latency = 0, updateHome } = {},
+  {
+    intervalSeconds = 60,
+    continuityGraceMinutes,
+    latency = 0,
+    updateHome,
+  } = {},
 ) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-cadence-'))
 
@@ -133,6 +138,7 @@ const cadenceFixture = async (
       },
       runId,
       intervalSeconds,
+      continuityGraceMinutes,
       now: () => clock.wall,
       monotonicNow: () => clock.monotonic,
     })
@@ -321,6 +327,39 @@ test('the first check after restart polls despite a recent saved sample', async 
   assert.equal(confirmed.lastInferredAt, new Date(clock.wall).toISOString())
   assert.deepEqual(confirmed.lastOff, saved.lastOff)
   assert.equal(confirmed.durationMs, null)
+})
+
+test('a restart keeps the off duration within the grace window', async t => {
+  const { state, create, advance, reopen } = await cadenceFixture(t, {
+    continuityGraceMinutes: 5,
+  })
+
+  state.powerStatus = 'on'
+
+  const first = create('a')
+
+  await first.check()
+  advance(60000)
+  state.powerStatus = 'off'
+  await first.check()
+
+  await reopen()
+
+  const second = create('b')
+
+  state.powerStatus = 'unknown'
+  advance(60000)
+  await second.check()
+  advance(60000)
+  await second.check()
+
+  state.powerStatus = 'off'
+  advance(60000)
+
+  const [status] = await second.check()
+
+  assert.equal(status.status, 'off')
+  assert.equal(status.durationMs, 180000)
 })
 
 test('a failed provider round still applies the cooldown', async t => {

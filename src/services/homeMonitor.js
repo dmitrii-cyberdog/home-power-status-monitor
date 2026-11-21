@@ -7,6 +7,7 @@ export const createHomeMonitor = ({
   homes,
   runId,
   intervalSeconds,
+  continuityGraceMinutes = 0,
   now = Date.now,
   monotonicNow = () => performance.now(),
   log,
@@ -18,6 +19,12 @@ export const createHomeMonitor = ({
   const effectiveIntervalSeconds = Math.max(60, intervalSeconds)
 
   const minimumMs = effectiveIntervalSeconds * 1000
+
+  // The grace window is never narrower than two effective polling intervals.
+  const continuityGraceMs = Math.max(
+    continuityGraceMinutes * 60000,
+    effectiveIntervalSeconds * 2000,
+  )
 
   const devices = new Map()
 
@@ -63,6 +70,7 @@ export const createHomeMonitor = ({
                 {
                   runId,
                   intervalSeconds: effectiveIntervalSeconds,
+                  continuityGraceMs,
                   recipients: access.recipients(observation.id, registry),
                 },
               )

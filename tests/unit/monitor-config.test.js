@@ -16,6 +16,7 @@ test('monitor configuration discovers sparse IDs and preserves selectors', () =>
 
   assert.equal(result.intervalSeconds, 60)
   assert.equal(result.failedChecks, 3)
+  assert.equal(result.continuityGraceMinutes, 5)
   assert.equal(result.homes[0].id, '2')
   assert.equal(result.homes[0].name, 'Family Home')
   assert.equal(result.homes[0].devices[0].name, ' Camera ')
@@ -26,6 +27,8 @@ test('monitor rejects unsafe configuration without disclosing values', () => {
   for (const overrides of [
     { POWER_CHECK_INTERVAL_SECONDS: '0' },
     { POWER_OFF_FAILED_CHECKS: '1.5' },
+    { POWER_CONTINUITY_GRACE_MINUTES: '0' },
+    { POWER_CONTINUITY_GRACE_MINUTES: '1.5' },
     { HOME_2_NAME: '' },
     { DEVICE_3_HOME_2_TYPE: 'other' },
     { HOME_2_EZVIZ_API_APP_KEY: '' },

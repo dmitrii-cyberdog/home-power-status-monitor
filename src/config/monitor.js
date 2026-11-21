@@ -192,6 +192,7 @@ export const parseMonitorConfig = env => {
   return {
     intervalSeconds: integer('POWER_CHECK_INTERVAL_SECONDS', 60, 2147483),
     failedChecks: integer('POWER_OFF_FAILED_CHECKS', 3),
+    continuityGraceMinutes: integer('POWER_CONTINUITY_GRACE_MINUTES', 5, 35791),
     homes,
   }
 }

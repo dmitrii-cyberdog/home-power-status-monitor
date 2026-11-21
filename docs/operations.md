@@ -29,6 +29,7 @@ the ignored `src/.env.local` file.
 | `CRON_CHECK_POWER_STATUS_IS_ENABLED` | `0`     | Set to `1` for scheduled checks.                                         |
 | `POWER_CHECK_INTERVAL_SECONDS`       | `60`    | Scheduled check interval and base alert retry interval.                  |
 | `POWER_OFF_FAILED_CHECKS`            | `3`     | Consecutive offline observations required per device.                    |
+| `POWER_CONTINUITY_GRACE_MINUTES`     | `5`     | Maximum gap between equal on/off results that keeps a duration.          |
 
 Use the home and device block in [the shared defaults](../src/.env) as a
 template. Set `HOME_<id>_NAME`, `HOME_<id>_EZVIZ_API_APP_KEY`, and

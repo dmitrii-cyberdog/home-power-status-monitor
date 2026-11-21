@@ -52,9 +52,13 @@ samples in one process run within twice the effective polling interval
 contribute to on/off estimates. Other elapsed intervals count as uncertain.
 Clock reversal never subtracts or double-counts time. Restart resets streaks and
 exposes current state as unknown until a new sample commits. An unchanged state
-after restart sends no event. Unknown gaps interrupt continuous-duration claims
-until a new episode starts. Results older than twice the effective polling
-interval are stale. Both calculations use
+after restart sends no event. A continuous-duration claim survives restarts and
+unknown samples when the next on/off result follows the previous one within
+`POWER_CONTINUITY_GRACE_MINUTES` (default 5, never less than two effective
+intervals) without a clock reversal. A longer gap interrupts the claim until a
+new episode starts; a bridged gap never repairs an earlier interruption. Totals
+still count bridged gaps as uncertain. Results older than twice the effective
+polling interval are stale. Both calculations use
 `max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds as the interval. Unobserved tail
 time is displayed separately; totals stop at the last processed sample. No
 calendar reports exist.
@@ -94,8 +98,8 @@ the last known state, episode detection time and last confirmation, followed by
 the current EZVIZ reading of each device, with the offline check count. Only
 when no device returned a readable status does it note that the current state
 could not be confirmed. Without a prior decisive observation, the bot reports
-unknown power. Gaps and restarts can leave continuous duration unknown even
-after a fresh decisive observation.
+unknown power. Gaps longer than the continuity grace window leave continuous
+duration unknown even after a fresh decisive observation.
 
 `/status_full [home name]` uses the same access, refresh and filtering rules. It
 adds observation/detection timestamps, baseline and uncertainty notes, sampled
@@ -155,11 +159,12 @@ already submitted request cannot be recalled.
 Alerts capture prior episode detections and any supported preceding duration in
 the same commit. Restoration shows the prior off detection and observed
 downtime. Outage shows observed uptime, the previous off detection and elapsed
-time between the two detections. Gaps can leave uptime or downtime unknown. The
-time between detections is elapsed wall time. Stored timestamps remain UTC. The
-bot formats notification dates in the home's fixed offset and includes the zone
-label. Both manual status commands use each home’s configured zone, including
-device observation times in `/status_full`.
+time between the two detections. Gaps longer than the continuity grace window
+leave uptime or downtime unknown. The time between detections is elapsed wall
+time. Stored timestamps remain UTC. The bot formats notification dates in the
+home's fixed offset and includes the zone label. Both manual status commands use
+each home’s configured zone, including device observation times in
+`/status_full`.
 
 When `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` is positive, the notification
 worker sends the brief cached status to current subscribers on that home's

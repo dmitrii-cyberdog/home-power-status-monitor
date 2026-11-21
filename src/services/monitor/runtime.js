@@ -15,7 +15,7 @@ export const createMonitorRuntime = async ({
   log,
   ...deps
 }) => {
-  const { homes, intervalSeconds } = config.monitor
+  const { homes, intervalSeconds, continuityGraceMinutes } = config.monitor
 
   const store = await (deps.openStore ?? openMonitorStore)({
     directory,
@@ -41,6 +41,7 @@ export const createMonitorRuntime = async ({
       homes,
       runId: randomUUID(),
       intervalSeconds,
+      continuityGraceMinutes,
       now,
       log,
     })
