@@ -26,32 +26,58 @@ export const createPowerNotifications = ({
 
   let pendingStatus = null
 
-  const statusCadences = new Map(
-    homes
-      .filter(home => home.notificationIntervalMinutes > 0)
-      .map(home => [
-        home.id,
-        { intervalMs: home.notificationIntervalMinutes * 60000 },
-      ]),
-  )
+  // Recurring cadence per chat and home, keyed `${chatId}:${homeId}`.
+  const statusCadences = new Map()
 
-  const dueHomes = () => {
-    const due = new Set()
+  const dueRecipients = registry => {
+    const due = new Map()
 
-    if (!statusCadences.size) {
-      return due
-    }
+    const seen = new Set()
 
     const time = now()
 
-    for (const [homeId, cadence] of statusCadences) {
-      cadence.anchor ??= time
+    for (const home of homes) {
+      for (const recipient of access.recipients(home.id, registry)) {
+        const minutes = access.getIntervalMinutes(
+          recipient.chatId,
+          home.id,
+          registry,
+        )
 
-      const elapsed = time - cadence.anchor
+        if (!minutes) {
+          continue
+        }
 
-      if (elapsed >= cadence.intervalMs) {
-        cadence.anchor = time - (elapsed % cadence.intervalMs)
-        due.add(homeId)
+        const key = `${recipient.chatId}:${home.id}`
+
+        const intervalMs = minutes * 60000
+
+        seen.add(key)
+
+        let cadence = statusCadences.get(key)
+
+        if (cadence?.intervalMs !== intervalMs) {
+          cadence = { intervalMs, anchor: time }
+          statusCadences.set(key, cadence)
+        }
+
+        const elapsed = time - cadence.anchor
+
+        if (elapsed >= intervalMs) {
+          cadence.anchor = time - (elapsed % intervalMs)
+
+          if (!due.has(home.id)) {
+            due.set(home.id, [])
+          }
+
+          due.get(home.id).push(recipient)
+        }
+      }
+    }
+
+    for (const key of statusCadences.keys()) {
+      if (!seen.has(key)) {
+        statusCadences.delete(key)
       }
     }
 
@@ -169,13 +195,11 @@ export const createPowerNotifications = ({
   const pass = async includeAlerts => {
     const pairs = []
 
-    const due = dueHomes()
+    const due = dueRecipients(store.readChats())
 
     const statuses = due.size
       ? new Map(getStatuses().map(status => [status.id, status]))
       : new Map()
-
-    const registry = due.size ? store.readChats() : null
 
     for (const home of homes) {
       const groups = new Map()
@@ -195,7 +219,7 @@ export const createPowerNotifications = ({
       }
 
       if (due.has(home.id)) {
-        for (const recipient of access.recipients(home.id, registry)) {
+        for (const recipient of due.get(home.id)) {
           groupFor(recipient.chatId).periodic = {
             delivery: { ...recipient, eventId: `${home.id}:status` },
             status: statuses.get(home.id),

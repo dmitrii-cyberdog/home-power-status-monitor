@@ -31,6 +31,7 @@ test('committed rounds coalesce and deliveries retry independently without repla
         subscriptionId: 's',
         locale: 'en',
       })),
+    getIntervalMinutes: () => 0,
     isDeliveryAllowed: () => true,
     getLocale: () => 'en',
   }

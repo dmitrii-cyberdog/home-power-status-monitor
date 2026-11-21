@@ -202,6 +202,7 @@ test('failed earlier events block only their home/chat; revoked entries are remo
     store,
     homes: [{ id: '1', name: 'Home' }],
     access: {
+      recipients: () => [],
       isDeliveryAllowed: delivery => delivery.chatId === '1',
       getLocale: () => 'en',
     },
@@ -233,6 +234,7 @@ test('stop drains the acknowledgement of a send already accepted', async t => {
     store,
     homes: [{ id: '1', name: 'Home' }],
     access: {
+      recipients: () => [],
       isDeliveryAllowed: delivery => delivery.chatId === '1',
       getLocale: () => 'en',
     },
@@ -280,6 +282,7 @@ test('a failed subscription write cannot let drain abandon other accepted sends'
     store,
     homes: [{ id: '1', name: 'Home' }],
     access: {
+      recipients: () => [],
       isDeliveryAllowed: () => true,
       getLocale: () => 'en',
       disableSubscriptions: async () => {
@@ -337,6 +340,7 @@ test('shutdown reports a periodic write failure with a queued alert tick', async
     getStatuses: () => [{ id: '1' }],
     access: {
       recipients: () => [{ chatId: '1' }],
+      getIntervalMinutes: () => 1,
       isDeliveryAllowed: () => true,
       getLocale: () => 'en',
       disableSubscriptions: () => {
@@ -664,4 +668,118 @@ test('a full alert tick during a periodic send drains the pending alert', async 
     [undefined, 'HTML', undefined],
   )
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+})
+
+const periodicSends = (sent, chatId) =>
+  sent.filter(
+    call =>
+      call.payload.parse_mode === 'HTML' &&
+      String(call.payload.chat_id) === String(chatId),
+  ).length
+
+const advanceMinutes = async (t, minutes, clock, runtime) => {
+  for (let minute = 0; minute < minutes; minute++) {
+    clock.now += 60000
+    t.mock.timers.tick(60000)
+    await runtime.drainNotifications()
+  }
+}
+
+test('each chat follows its own recurring interval', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+
+  const clock = { now: 0 }
+
+  const { access, runtime, sent } = await runtimeFixture(
+    t,
+    { notificationIntervalMinutes: 1 },
+    () => clock.now,
+  )
+
+  await access.authorize('8', 'secret', 'en')
+  await access.setSubscription('8', '1', true)
+  await access.setInterval('8', '1', 5)
+
+  runtime.startNotifications()
+  await runtime.drainNotifications()
+
+  await advanceMinutes(t, 5, clock, runtime)
+
+  assert.equal(periodicSends(sent, 7), 5)
+  assert.equal(periodicSends(sent, 8), 1)
+})
+
+test('changing an interval restarts that chat cadence', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+
+  const clock = { now: 0 }
+
+  const { access, runtime, sent } = await runtimeFixture(
+    t,
+    { notificationIntervalMinutes: 1 },
+    () => clock.now,
+  )
+
+  runtime.startNotifications()
+  await runtime.drainNotifications()
+
+  await advanceMinutes(t, 1, clock, runtime)
+
+  assert.equal(periodicSends(sent, 7), 1)
+
+  await access.setInterval('7', '1', 5)
+
+  // The first pass after the change re-anchors the cadence.
+  await advanceMinutes(t, 5, clock, runtime)
+
+  assert.equal(periodicSends(sent, 7), 1)
+
+  await advanceMinutes(t, 1, clock, runtime)
+
+  assert.equal(periodicSends(sent, 7), 2)
+})
+
+test('interval zero stops recurring updates but keeps alerts', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+
+  const clock = { now: 0 }
+
+  const { access, runtime, sent, store } = await runtimeFixture(
+    t,
+    { notificationIntervalMinutes: 1 },
+    () => clock.now,
+  )
+
+  await access.setInterval('7', '1', 0)
+
+  runtime.startNotifications()
+  await runtime.drainNotifications()
+
+  await advanceMinutes(t, 3, clock, runtime)
+
+  assert.equal(sent.length, 1)
+  assert.equal(periodicSends(sent, 7), 0)
+  assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+})
+
+test('a chat interval enables updates when the home default is off', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] })
+
+  const clock = { now: 0 }
+
+  const { access, runtime, sent } = await runtimeFixture(
+    t,
+    {},
+    () => clock.now,
+    300,
+  )
+
+  await access.setInterval('7', '1', 5)
+
+  runtime.startNotifications()
+  await runtime.drainNotifications()
+
+  await advanceMinutes(t, 5, clock, runtime)
+
+  assert.equal(periodicSends(sent, 7), 1)
 })

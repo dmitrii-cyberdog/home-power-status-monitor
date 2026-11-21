@@ -103,10 +103,7 @@ export const createMonitorRuntime = async ({
         flush()
         timer = setInterval(flush, intervalSeconds * 1000)
 
-        if (
-          60 % intervalSeconds !== 0 &&
-          homes.some(home => home.notificationIntervalMinutes > 0)
-        ) {
+        if (60 % intervalSeconds !== 0) {
           recurringTimer = setInterval(
             () => flush({ includeAlerts: false }),
             60000,
