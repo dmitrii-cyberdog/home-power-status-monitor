@@ -8,6 +8,7 @@ test('history accounts sampled durations and uncertain transitions once', () => 
   const options = {
     runId: 'run',
     intervalSeconds: 60,
+    continuityGraceMs: 300000,
     recipients: [
       { chatId: '1', generation: 'g', subscriptionId: 's', locale: 'en' },
     ],
@@ -52,7 +53,7 @@ test('history accounts sampled durations and uncertain transitions once', () => 
   )
 
   assert.equal(restart.eventSequence, 2)
-  assert.equal(restart.continuous, false)
+  assert.equal(restart.continuous, true)
   assert.equal(record.stats.uncertainMs, 180000)
 })
 
@@ -61,6 +62,7 @@ test('clock rollback uses an accounting high-water mark and queue saturation is 
   const options = {
     runId: 'r',
     intervalSeconds: 60,
+    continuityGraceMs: 300000,
     recipients: Array.from({ length: 1001 }, (_, index) => ({
       chatId: String(index + 1),
       generation: 'g',
@@ -107,6 +109,7 @@ test('a new episode restores continuity after a gap but labels its event uncerta
   const options = {
     runId: 'r',
     intervalSeconds: 60,
+    continuityGraceMs: 300000,
     recipients: [
       { chatId: '1', generation: 'g', subscriptionId: 's', locale: 'en' },
     ],
@@ -116,8 +119,8 @@ test('a new episode restores continuity after a gap but labels its event uncerta
   for (const [seconds, status] of [
     [0, 'on'],
     [60, 'unknown'],
-    [120, 'on'],
-    [180, 'off'],
+    [420, 'on'],
+    [480, 'off'],
   ]) {
     record = powerHistory.reduceHomeObservation(
       record,
@@ -136,6 +139,7 @@ test('transition deliveries snapshot previous detections and supported episode d
   const options = {
     runId: 'run',
     intervalSeconds: 5400,
+    continuityGraceMs: 10800000,
     recipients: [
       { chatId: '1', generation: 'g', subscriptionId: 's', locale: 'en' },
     ],
@@ -177,7 +181,7 @@ test('transition deliveries snapshot previous detections and supported episode d
       {
         previousOnAt: '2026-11-20T09:30:00.000Z',
         previousOffAt: '2026-11-20T12:00:00.000Z',
-        precedingStateMs: null,
+        precedingStateMs: 3600000,
       },
       {
         previousOnAt: '2026-11-20T13:00:00.000Z',
@@ -201,6 +205,7 @@ test('a rollback at the start of an episode suppresses its observed duration', (
       { status, observedAt: new Date(minute * 60000).toISOString() },
       {
         intervalSeconds: 60,
+        continuityGraceMs: 300000,
         runId: 'run',
         recipients: [
           { chatId: '1', generation: 'g', subscriptionId: 's', locale: 'en' },
@@ -211,6 +216,76 @@ test('a rollback at the start of an episode suppresses its observed duration', (
 
   assert.equal(record.pendingDeliveries.at(-1).history.precedingStateMs, null)
   assert.equal(record.pendingDeliveries.at(-1).uncertain, true)
+})
+
+const graceOptions = {
+  intervalSeconds: 60,
+  continuityGraceMs: 300000,
+  recipients: [
+    { chatId: '1', generation: 'g', subscriptionId: 's', locale: 'en' },
+  ],
+}
+
+const observeAll = (samples, record = monitorRecords.createHomeRecord('1')) => {
+  for (const [seconds, status, runId = 'run'] of samples) {
+    record = powerHistory.reduceHomeObservation(
+      record,
+      { status, observedAt: new Date(seconds * 1000).toISOString() },
+      { ...graceOptions, runId },
+    )
+  }
+
+  return record
+}
+
+test('a restart with streak-rebuild unknowns keeps the off duration', () => {
+  const record = observeAll([
+    [0, 'on', 'a'],
+    [60, 'off', 'a'],
+    [120, 'unknown', 'b'],
+    [180, 'unknown', 'b'],
+    [240, 'off', 'b'],
+  ])
+
+  assert.equal(record.continuous, true)
+  assert.equal(record.stateSince, new Date(60000).toISOString())
+  assert.equal(
+    powerHistory.projectHomeStatus(record, {
+      home: { id: '1', name: 'Home' },
+      runId: 'b',
+      now: 300000,
+      intervalSeconds: 60,
+    }).durationMs,
+    240000,
+  )
+})
+
+test('unknown samples within the window keep outage uptime', () => {
+  const record = observeAll([
+    [0, 'on'],
+    [60, 'on'],
+    [120, 'unknown'],
+    [180, 'unknown'],
+    [240, 'off'],
+  ])
+
+  const delivery = record.pendingDeliveries.at(-1)
+
+  assert.equal(delivery.history.precedingStateMs, 240000)
+  assert.equal(delivery.uncertain, false)
+})
+
+test('a decisive gap longer than the window breaks continuity', () => {
+  const broken = observeAll([
+    [0, 'on'],
+    [60, 'unknown'],
+    [360, 'on'],
+  ])
+
+  assert.equal(broken.continuous, false)
+
+  // A later bridged confirmation does not repair an earlier break.
+  assert.equal(observeAll([[420, 'on']], broken).continuous, false)
 })
 
 test('projected home status carries the configured time zone for manual commands', () => {

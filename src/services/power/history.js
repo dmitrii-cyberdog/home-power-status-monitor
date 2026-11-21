@@ -1,7 +1,7 @@
 export const reduceHomeObservation = (
   record,
   observation,
-  { runId, intervalSeconds, recipients },
+  { runId, intervalSeconds, continuityGraceMs, recipients },
 ) => {
   const next = structuredClone(record)
 
@@ -41,24 +41,22 @@ export const reduceHomeObservation = (
     runId, // Worker run that recorded the observation.
   }
 
-  if (previous && !supported) {
-    next.continuous = false
-  }
-
   if (status !== 'unknown') {
     const baseline = record.lastDecisiveStatus === 'unknown'
 
     const changed = record.lastDecisiveStatus !== status
 
+    // Restarts and unknown samples are bridged when a decisive state follows the last one in time.
+    const bridged =
+      record.lastDecisiveAt !== null &&
+      time >= highWater &&
+      time - Date.parse(record.lastDecisiveAt) <= continuityGraceMs
+
+    next.continuous = record.continuous && bridged
+
     if (changed) {
       next.stateSince = observedAt
-      next.continuous =
-        !baseline &&
-        sameRun &&
-        gap >= 0 &&
-        gap <= intervalSeconds * 2000 &&
-        previous.status !== 'unknown' &&
-        record.continuous
+      next.continuous = !baseline && next.continuous
       next[status === 'on' ? 'lastOn' : 'lastOff'] = {
         detectedAt: observedAt, // UTC time the episode was first observed.
         baseline, // True when no earlier decisive observation exists.
