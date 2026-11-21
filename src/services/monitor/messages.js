@@ -71,7 +71,11 @@ const sinceLines = (home, t, timestamp) => {
     lastState === 'off' ? home.lastOff : lastState === 'on' ? home.lastOn : null
 
   return episode
-    ? [[`🕒 ${t('monitor_since')}: ${statusEpisode(episode, t, timestamp)}`]]
+    ? [
+        [
+          `🕒 ${t(`monitor_detected_${lastState}`)} ${statusEpisode(episode, t, timestamp)}`,
+        ],
+      ]
     : []
 }
 
@@ -131,9 +135,22 @@ const summaryLines = (home, t, timestamp, brief = false) => {
 
     lines.push([''], ...since)
 
-    lines.push([
-      `${stateIcons[opposite]} ${t(`monitor_last_${opposite}`)}: ${timestamp(home[opposite === 'on' ? 'lastOn' : 'lastOff']?.detectedAt)}`,
-    ])
+    const oppositeAt = timestamp(
+      home[opposite === 'on' ? 'lastOn' : 'lastOff']?.detectedAt,
+    )
+
+    if (brief) {
+      lines.push(
+        [''],
+        [
+          `${stateIcons[opposite]} ${t(`monitor_before_${opposite}`)} ${oppositeAt}`,
+        ],
+      )
+    } else {
+      lines.push([
+        `${stateIcons[opposite]} ${t(`monitor_last_${opposite}`)}: ${oppositeAt}`,
+      ])
+    }
   }
 
   return lines

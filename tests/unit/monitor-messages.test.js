@@ -115,13 +115,16 @@ test('brief status shows only current state, duration and opposite detection', (
 
   assert.match(on, /⏱ For 2 days 3 hours/)
   assert.match(on, /since detection/)
-  assert.match(on, /Last power off: Not observed/)
+  assert.match(on, /Before that, power went off at Not observed/)
   assert.doesNotMatch(on, /Cumulative|outages|Last observation|auth_failed/)
 
   const off = renderStatusMessages([home({ status: 'off' })], t).join('\n')
 
   assert.match(off, /⏱ For 1 minute/)
-  assert.match(off, /✅ Last power on: 01\.01\.1970 00:00 \(local time\)/)
+  assert.match(
+    off,
+    /✅ Before that, power came on at 01\.01\.1970 00:00 \(local time\)/,
+  )
 })
 
 test('brief duration boundaries use readable localized units', () => {
@@ -423,7 +426,10 @@ test('manual status timestamps follow each home offset, including device observa
 
   const [brief] = renderStatusMessages([first, second], translate('en'))
 
-  assert.match(brief, /Last power off: 21\.11\.2026 01:15 \(local time\)/)
+  assert.match(
+    brief,
+    /Before that, power went off at 21\.11\.2026 01:15 \(local time\)/,
+  )
   assert.match(brief, /Last check: 20\.11\.2026 19:45 \(local time\)/)
   assert.doesNotMatch(brief, /GMT|UTC/)
 
@@ -454,11 +460,17 @@ test('brief status distinguishes outage detection from the last confirmation', (
   assert.match(unknown, /🔄 Last check: 20\.11\.2026 18:50 \(local time\)/)
   assert.match(unknown, /The current state could not be confirmed/)
   assert.doesNotMatch(unknown, /Power status unknown/)
-  assert.match(unknown, /🕒 Detected: 20\.11\.2026 17:58 \(local time\)/)
+  assert.match(
+    unknown,
+    /🕒 Power outage detected at 20\.11\.2026 17:58 \(local time\)/,
+  )
 
   const [off] = renderStatusMessages([outage], translate('en'))
 
-  assert.match(off, /🕒 Detected: 20\.11\.2026 17:58 \(local time\)/)
+  assert.match(
+    off,
+    /🕒 Power outage detected at 20\.11\.2026 17:58 \(local time\)/,
+  )
   assert.doesNotMatch(off, /Power off for/)
 })
 
@@ -478,14 +490,17 @@ test('Russian brief status distinguishes a confirmed outage from the last known 
   )
 
   assert.match(current, /⚡ Электричества нет ❌/)
-  assert.match(current, /🕒 Обнаружено: 20\.11\.2026 18:58 \(местн\. вр\.\)/)
+  assert.match(
+    current,
+    /🕒 Отключение света обнаружено в 20\.11\.2026 18:58 \(местн\. вр\.\)/,
+  )
   assert.match(
     inconclusive,
     /⚡ По последним данным:\n<b>Электричества нет ❌<\/b>/,
   )
   assert.match(
     inconclusive,
-    /🕒 Обнаружено: 20\.11\.2026 18:58 \(местн\. вр\.\)/,
+    /🕒 Отключение света обнаружено в 20\.11\.2026 18:58 \(местн\. вр\.\)/,
   )
   assert.match(
     inconclusive,
@@ -493,6 +508,44 @@ test('Russian brief status distinguishes a confirmed outage from the last known 
   )
   assert.match(inconclusive, /Подтвердить текущее состояние не удалось/)
   assert.doesNotMatch(inconclusive, /Состояние электричества неизвестно|уже /)
+})
+
+test('brief status uses state-specific detection and previous-change wording', () => {
+  const off = home({
+    status: 'off',
+    timeZone: 'GMT+3',
+    lastOff: { detectedAt: '2026-11-20T15:58:00.000Z', baseline: false },
+    lastOn: { detectedAt: '2026-11-20T04:01:00.000Z', baseline: false },
+  })
+
+  const ru = renderStatusMessages([off], translate('ru')).join('\n')
+
+  assert.ok(
+    ru.includes(
+      '🕒 Отключение света обнаружено в 20.11.2026 18:58 (местн. вр.)\n\n✅ До этого свет включали 20.11.2026 07:01',
+    ),
+    ru,
+  )
+
+  const en = renderStatusMessages([off], translate('en')).join('\n')
+
+  assert.match(en, /Power outage detected at/)
+  assert.match(en, /Before that, power came on at/)
+
+  const on = renderStatusMessages(
+    [{ ...off, status: 'on' }],
+    translate('en'),
+  ).join('\n')
+
+  assert.match(on, /Power return detected at/)
+  assert.match(on, /Before that, power went off at/)
+
+  const full = messages
+    .renderFullStatusMessages([off], translate('en'))
+    .join('\n')
+
+  assert.match(full, /Last power on:/)
+  assert.match(full, /Detected:/)
 })
 
 test('inconclusive brief status shows the current EZVIZ device reading', () => {
