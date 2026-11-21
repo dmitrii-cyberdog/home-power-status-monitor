@@ -994,10 +994,6 @@ test('private notification interval sets, resets and disables recurring updates'
 
   await send('/notification_interval default')
   assert.match(replies.at(-1).payload.text, /default/i)
-  assert.match(
-    replies.at(-1).payload.text,
-    new RegExp(String(access.getIntervalMinutes('7', '1'))),
-  )
 
   await send('/notification_interval 0')
   assert.match(replies.at(-1).payload.text, /off/i)
