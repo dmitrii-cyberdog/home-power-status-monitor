@@ -1007,6 +1007,21 @@ test('private notification interval sets, resets and disables recurring updates'
   assert.equal(access.getIntervalMinutes('7', '1'), 45)
 })
 
+test('resetting the interval when the home default is off says updates are off', async t => {
+  const { access, replies, send } = await notificationFixture(t, {
+    chat: { id: 7, type: 'private', first_name: 'User' },
+  })
+
+  await access.authorize('7', 'test-only', 'en')
+  await send('/notification_interval 30')
+
+  await send('/notification_interval default')
+  assert.equal(access.getIntervalMinutes('7', '1'), 0)
+  assert.match(replies.at(-1).payload.text, /off/i)
+  assert.match(replies.at(-1).payload.text, /default/i)
+  assert.doesNotMatch(replies.at(-1).payload.text, /every 0/)
+})
+
 test('notification interval rejects invalid input and unknown homes', async t => {
   const { access, replies, send } = await notificationFixture(t, {
     chat: { id: 7, type: 'private', first_name: 'User' },

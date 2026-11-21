@@ -214,7 +214,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       let key = 'interval_set'
 
       if (parsed.minutes === null) {
-        key = 'interval_reset'
+        key = effective === 0 ? 'interval_reset_off' : 'interval_reset'
       } else if (effective === 0) {
         key = 'interval_off'
       }
