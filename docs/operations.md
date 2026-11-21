@@ -19,17 +19,17 @@ Set `NODE_ENV` before starting the worker. Tests use `test` mode and skip dotenv
 files. Keep credentials, home and device identifiers, and administrator IDs in
 the ignored `src/.env.local` file.
 
-| Variable                             | Default | Purpose                                                                  |
-| ------------------------------------ | ------- | ------------------------------------------------------------------------ |
-| `NODE_ENV`                           | `local` | Select `local`, `dev`, or `prod`.                                        |
-| `DEFAULT_LOCALE`                     | `ru`    | Fallback Telegram language. Set `en` for English.                        |
-| `TG_BOT_TOKEN`                       | Empty   | Enable Telegram polling.                                                 |
-| `TG_BOT_ACCESS_SECRET`               | Empty   | Authorize private chats with `/secret`.                                  |
-| `TG_ADMIN_1` through `TG_ADMIN_50`   | Empty   | Allow listed Telegram user IDs to approve groups and clear chat records. |
-| `CRON_CHECK_POWER_STATUS_IS_ENABLED` | `0`     | Set to `1` for scheduled checks.                                         |
-| `POWER_CHECK_INTERVAL_SECONDS`       | `60`    | Scheduled check interval and base alert retry interval.                  |
-| `POWER_OFF_FAILED_CHECKS`            | `3`     | Consecutive offline observations required per device.                    |
-| `POWER_CONTINUITY_GRACE_MINUTES`     | `5`     | Maximum gap between equal on/off results that keeps a duration.          |
+| Variable                             | Default | Purpose                                                                    |
+| ------------------------------------ | ------- | -------------------------------------------------------------------------- |
+| `NODE_ENV`                           | `local` | Select `local`, `dev`, or `prod`.                                          |
+| `DEFAULT_LOCALE`                     | `ru`    | Fallback Telegram language. Set `en` for English.                          |
+| `TG_BOT_TOKEN`                       | Empty   | Enable Telegram polling.                                                   |
+| `TG_BOT_ACCESS_SECRET`               | Empty   | Authorize private chats with `/secret`.                                    |
+| `TG_ADMIN_1` through `TG_ADMIN_50`   | Empty   | Allow listed Telegram user IDs to approve groups and clear chat records.   |
+| `CRON_CHECK_POWER_STATUS_IS_ENABLED` | `0`     | Set to `1` for scheduled checks.                                           |
+| `POWER_CHECK_INTERVAL_SECONDS`       | `60`    | Scheduled check interval and base alert retry interval.                    |
+| `POWER_OFF_FAILED_CHECKS`            | `3`     | Consecutive offline observations required per device.                      |
+| `POWER_CONTINUITY_GRACE_MINUTES`     | `5`     | Maximum gap between on/off results that keeps episode and alert durations. |
 
 Use the home and device block in [the shared defaults](../src/.env) as a
 template. Set `HOME_<id>_NAME`, `HOME_<id>_EZVIZ_API_APP_KEY`, and

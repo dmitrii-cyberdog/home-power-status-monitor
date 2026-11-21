@@ -8,6 +8,7 @@ export const createHomeMonitor = ({
   runId,
   intervalSeconds,
   continuityGraceMinutes = 0,
+  failedChecks = 1,
   now = Date.now,
   monotonicNow = () => performance.now(),
   log,
@@ -20,10 +21,10 @@ export const createHomeMonitor = ({
 
   const minimumMs = effectiveIntervalSeconds * 1000
 
-  // The grace window is never narrower than two effective polling intervals.
+  // The grace window always covers a full offline streak plus one polling interval.
   const continuityGraceMs = Math.max(
     continuityGraceMinutes * 60000,
-    effectiveIntervalSeconds * 2000,
+    (failedChecks + 1) * effectiveIntervalSeconds * 1000,
   )
 
   const devices = new Map()

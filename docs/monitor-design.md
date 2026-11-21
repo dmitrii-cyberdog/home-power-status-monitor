@@ -54,14 +54,15 @@ Clock reversal never subtracts or double-counts time. Restart resets streaks and
 exposes current state as unknown until a new sample commits. An unchanged state
 after restart sends no event. A continuous-duration claim survives restarts and
 unknown samples when the next on/off result follows the previous one within
-`POWER_CONTINUITY_GRACE_MINUTES` (default 5, never less than two effective
-intervals) without a clock reversal. A longer gap interrupts the claim until a
-new episode starts; a bridged gap never repairs an earlier interruption. Totals
-still count bridged gaps as uncertain. Results older than twice the effective
-polling interval are stale. Both calculations use
-`max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds as the interval. Unobserved tail
-time is displayed separately; totals stop at the last processed sample. No
-calendar reports exist.
+`POWER_CONTINUITY_GRACE_MINUTES` (default 5, never less than
+`POWER_OFF_FAILED_CHECKS + 1` effective intervals) without a clock reversal.
+This also decides whether alerts carry the preceding uptime or downtime. A
+longer gap interrupts the claim until a new episode starts; a bridged gap never
+repairs an earlier interruption. Totals still count bridged gaps as uncertain.
+Results older than twice the effective polling interval are stale. Both
+calculations use `max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds as the
+interval. Unobserved tail time is displayed separately; totals stop at the last
+processed sample. No calendar reports exist.
 
 ## Telegram access and delivery
 

@@ -87,6 +87,7 @@ const cadenceFixture = async (
   {
     intervalSeconds = 60,
     continuityGraceMinutes,
+    failedChecks,
     latency = 0,
     updateHome,
   } = {},
@@ -139,6 +140,7 @@ const cadenceFixture = async (
       runId,
       intervalSeconds,
       continuityGraceMinutes,
+      failedChecks,
       now: () => clock.wall,
       monotonicNow: () => clock.monotonic,
     })
@@ -360,6 +362,34 @@ test('a restart keeps the off duration within the grace window', async t => {
 
   assert.equal(status.status, 'off')
   assert.equal(status.durationMs, 180000)
+})
+
+test('the grace window covers a full offline streak at longer intervals', async t => {
+  const { state, create, advance, reopen } = await cadenceFixture(t, {
+    intervalSeconds: 120,
+    continuityGraceMinutes: 5,
+    failedChecks: 3,
+  })
+
+  state.powerStatus = 'off'
+  await create('a').check()
+
+  await reopen()
+
+  const second = create('b')
+
+  state.powerStatus = 'unknown'
+  advance(120000)
+  await second.check()
+  advance(120000)
+  await second.check()
+
+  state.powerStatus = 'off'
+  advance(120000)
+
+  const [status] = await second.check()
+
+  assert.equal(status.durationMs, 360000)
 })
 
 test('a failed provider round still applies the cooldown', async t => {
