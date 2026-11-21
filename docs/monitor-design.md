@@ -179,14 +179,15 @@ Before transport submission, access and subscription identity are rechecked. An
 already submitted request cannot be recalled.
 
 Alerts capture prior episode detections and any supported preceding duration in
-the same commit. Restoration shows the prior off detection and observed
-downtime. Outage shows observed uptime, the previous off detection and elapsed
-time between the two detections. Gaps longer than the continuity grace window
-leave uptime or downtime unknown. The time between detections is elapsed wall
-time. Stored timestamps remain UTC. The bot formats notification dates in the
-home's fixed offset and includes the zone label. Both manual status commands use
-each home’s configured zone, including device observation times in
-`/status_full`.
+the same commit. Restoration shows when power went off (the prior off detection)
+and how long it was out: the observed downtime when continuity is supported,
+otherwise the approximate (≈) time between the two detections next to the
+uncertainty note. Outage shows observed uptime, the previous off detection and
+elapsed time between the two detections. Gaps longer than the continuity grace
+window leave uptime unknown. The time between detections is elapsed wall time.
+Stored timestamps remain UTC. The bot formats notification dates in the home's
+fixed offset and includes the zone label. Both manual status commands use each
+home’s configured zone, including device observation times in `/status_full`.
 
 The notification worker sends the brief cached status to current subscribers on
 each subscriber's effective interval: the chat override, else the
