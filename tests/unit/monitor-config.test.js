@@ -93,3 +93,65 @@ test('homes configure fixed time zones and recurring notification minutes', () =
     )
   }
 })
+
+test('homes default to both alert types and accept only modes 1 through 3', () => {
+  const { homes } = parseMonitorConfig({
+    HOME_1_NAME: 'Default',
+    HOME_2_NAME: 'Restorations',
+    HOME_2_NOTIFICATION_MODE: '1',
+    HOME_3_NAME: 'Outages',
+    HOME_3_NOTIFICATION_MODE: '2',
+    HOME_4_NAME: 'Both',
+    HOME_4_NOTIFICATION_MODE: '3',
+  })
+
+  assert.deepEqual(
+    homes.map(home => home.notificationMode),
+    [3, 1, 2, 3],
+  )
+
+  for (const value of ['0', '4', '1.5', '', 'outage']) {
+    assert.throws(
+      () =>
+        parseMonitorConfig({
+          HOME_1_NAME: 'Home',
+          HOME_1_NOTIFICATION_MODE: value,
+        }),
+      /Invalid HOME_1_NOTIFICATION_MODE/,
+    )
+  }
+})
+
+test('homes configure recurring status modes independently of transition alerts', () => {
+  const { homes } = parseMonitorConfig({
+    HOME_1_NAME: 'Default',
+    HOME_2_NAME: 'On only',
+    HOME_2_NOTIFICATION_INTERVAL_MODE: '1',
+    HOME_3_NAME: 'Off only',
+    HOME_3_NOTIFICATION_MODE: '1',
+    HOME_3_NOTIFICATION_INTERVAL_MODE: '2',
+    HOME_4_NAME: 'Both',
+    HOME_4_NOTIFICATION_INTERVAL_MODE: '3',
+  })
+
+  assert.deepEqual(
+    homes.map(home => [home.notificationMode, home.notificationIntervalMode]),
+    [
+      [3, 3],
+      [3, 1],
+      [1, 2],
+      [3, 3],
+    ],
+  )
+
+  for (const value of ['0', '4', '1.5', '', 'off']) {
+    assert.throws(
+      () =>
+        parseMonitorConfig({
+          HOME_1_NAME: 'Home',
+          HOME_1_NOTIFICATION_INTERVAL_MODE: value,
+        }),
+      /Invalid HOME_1_NOTIFICATION_INTERVAL_MODE/,
+    )
+  }
+})

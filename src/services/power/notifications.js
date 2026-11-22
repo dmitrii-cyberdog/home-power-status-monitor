@@ -1,5 +1,10 @@
 import { isTelegramSendSkipped } from '../telegramApiQueue'
 
+export const allowsPowerState = (state, mode = 3) =>
+  mode === 3 ||
+  (mode === 1 && state === 'on') ||
+  (mode === 2 && state === 'off')
+
 const unavailableChat = error =>
   error?.error_code === 403 &&
   [
@@ -213,16 +218,38 @@ export const createPowerNotifications = ({
       }
 
       if (includeAlerts) {
-        for (const delivery of store.readHome(home.id).pendingDeliveries) {
+        const allowed = delivery =>
+          allowsPowerState(delivery.state, home.notificationMode)
+
+        let { pendingDeliveries } = store.readHome(home.id)
+
+        if (!pendingDeliveries.every(allowed)) {
+          const record = await store.updateHome(home.id, record => {
+            record.pendingDeliveries = record.pendingDeliveries.filter(allowed)
+
+            return record
+          })
+
+          pendingDeliveries = record.pendingDeliveries
+        }
+
+        for (const delivery of pendingDeliveries) {
           groupFor(delivery.chatId).deliveries.push(delivery)
         }
       }
 
-      if (due.has(home.id)) {
-        for (const recipient of due.get(home.id)) {
+      const recipients = due.get(home.id)
+
+      const status = statuses.get(home.id)
+
+      if (
+        recipients &&
+        allowsPowerState(status.status, home.notificationIntervalMode)
+      ) {
+        for (const recipient of recipients) {
           groupFor(recipient.chatId).periodic = {
             delivery: { ...recipient, eventId: `${home.id}:status` },
-            status: statuses.get(home.id),
+            status,
           }
         }
       }

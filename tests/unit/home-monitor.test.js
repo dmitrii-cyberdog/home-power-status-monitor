@@ -91,6 +91,8 @@ const cadenceFixture = async (
     failedChecks,
     latency = 0,
     updateHome,
+    notificationMode,
+    recipients = [],
   } = {},
 ) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-cadence-'))
@@ -114,8 +116,8 @@ const cadenceFixture = async (
       store: updateHome
         ? { readHome: id => state.store.readHome(id), updateHome }
         : state.store,
-      homes: [{ id: '1', name: 'Home' }],
-      access: { recipients: () => [] },
+      homes: [{ id: '1', name: 'Home', notificationMode }],
+      access: { recipients: () => recipients },
       monitor: {
         check: async () => {
           state.calls++
@@ -160,6 +162,40 @@ const cadenceFixture = async (
 }
 //
 //
+
+for (const [notificationMode, expected] of [
+  [1, ['on']],
+  [2, ['off']],
+  [3, ['off', 'on']],
+]) {
+  test(`mode ${notificationMode} queues selected alerts and records both events`, async t => {
+    const { state, create, advance } = await cadenceFixture(t, {
+      notificationMode,
+      recipients: [
+        { chatId: '1', generation: 'g', subscriptionId: 's', locale: 'en' },
+      ],
+    })
+
+    const coordinator = create()
+
+    state.powerStatus = 'off'
+    await coordinator.check()
+
+    advance(60000)
+    state.powerStatus = 'on'
+    await coordinator.check()
+
+    const record = state.store.readHome('1')
+
+    assert.equal(record.stats.outageCount, 1)
+    assert.equal(record.lastOff.detectedAt, new Date(0).toISOString())
+    assert.equal(record.lastOn.detectedAt, new Date(60000).toISOString())
+    assert.deepEqual(
+      record.pendingDeliveries.map(delivery => delivery.state),
+      expected,
+    )
+  })
+}
 
 test('concurrent status, cron and forced requests share one round', async t => {
   const { state, create } = await cadenceFixture(t)

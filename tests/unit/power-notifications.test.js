@@ -108,6 +108,85 @@ test('pending outage and restoration alerts use each chat preference on retry', 
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
 })
 
+for (const [notificationMode, expected] of [
+  [1, ['on']],
+  [2, ['off']],
+]) {
+  test(`mode ${notificationMode} discards excluded pending alerts even when delivery fails`, async t => {
+    const store = await fixture(t)
+
+    const dispatcher = createPowerNotifications({
+      store,
+      homes: [{ id: '1', notificationMode }],
+      access: {
+        recipients: () => [],
+        isDeliveryAllowed: () => true,
+        getLocale: () => 'en',
+      },
+      renderAlert: delivery => [delivery.state],
+      send: async () => {
+        throw new Error('Temporary network failure')
+      },
+    })
+
+    await dispatcher.flush()
+
+    assert.deepEqual(
+      store.readHome('1').pendingDeliveries.map(delivery => delivery.state),
+      [...expected, ...expected],
+    )
+  })
+}
+
+for (const [notificationIntervalMode, expected] of [
+  [1, ['on', 'on']],
+  [2, ['off', 'off']],
+  [3, ['on', 'on', 'off', 'off', 'unknown']],
+]) {
+  test(`interval mode ${notificationIntervalMode} filters repeated status independently of alerts`, async t => {
+    const store = await fixture(t)
+
+    const alerts = []
+    const updates = []
+
+    let now = 0
+    let status = 'on'
+
+    const dispatcher = createPowerNotifications({
+      store,
+      homes: [{ id: '1', notificationMode: 1, notificationIntervalMode }],
+      access: {
+        recipients: () => [{ chatId: '1' }],
+        getIntervalMinutes: () => 1,
+        isDeliveryAllowed: delivery => delivery.chatId === '1',
+        getLocale: () => 'en',
+      },
+      now: () => now,
+      getStatuses: () => [{ id: '1', status }],
+      renderAlert: delivery => [delivery.state],
+      renderStatus: snapshot => [snapshot.status],
+      send: async (_chatId, body, _guard, options) => {
+        const sent = options ? updates : alerts
+
+        sent.push(body)
+      },
+    })
+
+    await dispatcher.flush()
+
+    for (const state of ['on', 'on', 'off', 'off', 'unknown']) {
+      status = state
+      now += 60000
+
+      await dispatcher.flush({ includeAlerts: false })
+    }
+
+    assert.deepEqual(alerts, ['on'])
+    assert.deepEqual(updates, expected)
+    assert.deepEqual(store.readHome('1').pendingDeliveries, [])
+  })
+}
+
 test('cleared chat deliveries are discarded even after reauthorization and resubscription', async t => {
   const store = await fixture(t)
   const homes = [{ id: '1', name: 'Home' }]
@@ -762,14 +841,14 @@ test('interval zero stops recurring updates but keeps alerts', async t => {
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
 })
 
-test('a chat interval enables updates when the home default is off', async t => {
+test('a chat interval enables recurring status in restoration-only mode', async t => {
   t.mock.timers.enable({ apis: ['setInterval'] })
 
   const clock = { now: 0 }
 
-  const { access, runtime, sent } = await runtimeFixture(
+  const { access, runtime, sent, store } = await runtimeFixture(
     t,
-    {},
+    { notificationMode: 1 },
     () => clock.now,
     300,
   )
@@ -778,6 +857,9 @@ test('a chat interval enables updates when the home default is off', async t => 
 
   runtime.startNotifications()
   await runtime.drainNotifications()
+
+  assert.deepEqual(sent, [])
+  assert.deepEqual(store.readHome('1').pendingDeliveries, [])
 
   await advanceMinutes(t, 5, clock, runtime)
 

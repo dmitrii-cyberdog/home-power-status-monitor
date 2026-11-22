@@ -1,4 +1,4 @@
-import { powerHistory } from './power'
+import { allowsPowerState, powerHistory } from './power'
 
 export const createHomeMonitor = ({
   monitor,
@@ -65,6 +65,15 @@ export const createHomeMonitor = ({
         const results = await Promise.allSettled(
           observations.homes.map(async observation => {
             await store.updateHome(observation.id, (record, registry) => {
+              const home = homes.find(home => home.id === observation.id)
+
+              const recipients = allowsPowerState(
+                observation.status,
+                home.notificationMode,
+              )
+                ? access.recipients(observation.id, registry)
+                : []
+
               const next = powerHistory.reduceHomeObservation(
                 record,
                 observation,
@@ -72,7 +81,7 @@ export const createHomeMonitor = ({
                   runId,
                   intervalSeconds: effectiveIntervalSeconds,
                   continuityGraceMs,
-                  recipients: access.recipients(observation.id, registry),
+                  recipients,
                 },
               )
 

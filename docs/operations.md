@@ -51,6 +51,16 @@ to cross-check the device identity. The supported EZVIZ base URL is
   `/group_interval`. The first update is due one interval after the notification
   worker starts, the chat subscribes or its interval changes, and uses cached
   status.
+- `HOME_<id>_NOTIFICATION_INTERVAL_MODE` filters recurring updates for that
+  home, including chats with an interval override. Use `1` for power on only,
+  `2` for power off only, or `3` for all statuses (default, including unknown).
+  For example, `HOME_1_NOTIFICATION_INTERVAL_MODE=2` skips routine power-on
+  updates while allowing reminders during an outage.
+- `HOME_<id>_NOTIFICATION_MODE` controls transition alerts for all subscribers
+  to that home. Use `1` for restoration only, `2` for outage only, or `3` for
+  both (default). The mode applies after restart, when the next alert pass
+  discards any queued alerts the mode excludes. Recurring updates follow the
+  effective interval, and power history records both events in every mode.
 
 For older installations, use `NODE_ENV=dev` or `NODE_ENV=prod` and replace
 `CRON_CHECK_POWER_STATUS_TEMPLATE` with `POWER_CHECK_INTERVAL_SECONDS`. The

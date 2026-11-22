@@ -53,6 +53,8 @@ export const parseMonitorConfig = env => {
           'NAME',
           'TIME_ZONE',
           'NOTIFICATION_INTERVAL_MINUTES',
+          'NOTIFICATION_INTERVAL_MODE',
+          'NOTIFICATION_MODE',
           'EZVIZ_API_APP_KEY',
           'EZVIZ_API_SECRET',
           'EZVIZ_API_BASE_URL',
@@ -107,6 +109,14 @@ export const parseMonitorConfig = env => {
         0,
         Math.floor(Number.MAX_SAFE_INTEGER / 60000) - 1,
         0,
+      )
+
+      const notificationMode = integer(`${prefix}NOTIFICATION_MODE`, 3, 3)
+
+      const notificationIntervalMode = integer(
+        `${prefix}NOTIFICATION_INTERVAL_MODE`,
+        3,
+        3,
       )
 
       const selected = [...devices.values()]
@@ -177,6 +187,8 @@ export const parseMonitorConfig = env => {
         name,
         timeZone,
         notificationIntervalMinutes,
+        notificationIntervalMode,
+        notificationMode,
         offlineDeviceCount,
         ezviz,
         devices: selected,

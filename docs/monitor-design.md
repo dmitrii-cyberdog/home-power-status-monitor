@@ -172,11 +172,15 @@ See
 and [addressed commands](https://grammy.dev/guide/commands). Privacy mode need
 not be disabled for explicitly addressed commands.
 
-Both outage and restoration detections snapshot authorized subscribers into the
-same home commit. Subscribing does not replay old events. Disable/re-enable
-creates a new subscription identity, invalidating older pending deliveries.
-Before transport submission, access and subscription identity are rechecked. An
-already submitted request cannot be recalled.
+Detections enabled by `HOME_<id>_NOTIFICATION_MODE` snapshot authorized
+subscribers into the same home commit. Mode `1` queues restorations only, `2`
+queues outages only, and `3` queues both by default. Every mode records both
+types of detections in power history. The alert pass discards pending deliveries
+excluded by the current mode, including those queued before a restart. Recurring
+status updates follow their own interval. Subscribing does not replay old
+events. Disable/re-enable creates a new subscription identity, invalidating
+older pending deliveries. Before transport submission, access and subscription
+identity are rechecked. An already submitted request cannot be recalled.
 
 Alerts capture prior episode detections and any supported preceding duration in
 the same commit. Restoration shows when power went off (the prior off detection)
@@ -198,6 +202,12 @@ schedule resets on restart. It checks for due updates at least once per minute
 while idle, coalesces missed intervals, and skips a failed update until the next
 scheduled one after the Telegram transport's own retries. It uses the same
 subscription and locale guards as transition alerts.
+
+`HOME_<id>_NOTIFICATION_INTERVAL_MODE` filters the cached status at each due
+interval. Mode `1` sends only when power is on, `2` only when power is off, and
+`3` sends every status, including unknown, by default. A skipped update consumes
+that interval. Each home uses this filter for every subscriber, including chats
+with an interval override. Transition alerts use `HOME_<id>_NOTIFICATION_MODE`.
 
 Each chat can override the interval per home with
 `/notification_interval <minutes|default|0> [home name]` (addressed form in
