@@ -62,7 +62,9 @@ test('power alerts display the localized state, home and timestamp on separate l
         home({ name: 'Home & Co' }),
         translate(locale),
       ),
-      [`${heading}\n\n🏠 Home & Co\n🕒 06.03.2026 04:05:09 (${localTime})`],
+      [
+        `<b>${heading}</b>\n\n<b>🏠 Home &amp; Co</b>\n🕒 06.03.2026 04:05:09 (${localTime})`,
+      ],
     )
   }
 })
@@ -80,7 +82,7 @@ test('outage alerts retain baseline and uncertainty details when applicable', ()
   )
 
   assert.match(text, /\(Initial baseline; actual start unknown\)/)
-  assert.match(text, /\n\n⚠️ Uncertain continuity$/)
+  assert.match(text, /\n\n<i>⚠️ Uncertain continuity<\/i>$/)
 })
 
 test('brief status separates each heading and marks the current power state', () => {
@@ -411,7 +413,16 @@ test('transition alerts show localized episode history and omit unsupported dura
     outage,
     /📅 Previous outage detected at: 20\.11\.2026 10:00:00 \(local time\)/,
   )
-  assert.match(outage, /Time between outage detections: 4 hours/)
+  assert.match(outage, /Previous outage was: 4 hours ago/)
+
+  const localizedOutage = render(
+    'off',
+    '2026-11-20T12:00:00.000Z',
+    { previousOffAt },
+    'ru',
+  )
+
+  assert.match(localizedOutage, /Предыдущее отключение было: 4 часа назад/)
 
   const uncertain = render(
     'off',
@@ -421,7 +432,10 @@ test('transition alerts show localized episode history and omit unsupported dura
   )
 
   assert.match(uncertain, /20\.11\.2026 10:00:00 \(местн\. вр\.\)/)
-  assert.doesNotMatch(uncertain, /Время с электричеством|Между обнаружениями/)
+  assert.doesNotMatch(
+    uncertain,
+    /Время с электричеством|Предыдущее отключение было/,
+  )
 })
 
 test('restore alerts show off time and downtime, approximate when continuity is unknown', () => {

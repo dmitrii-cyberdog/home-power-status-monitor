@@ -3,6 +3,8 @@ import { I18n } from '@grammyjs/i18n'
 
 import config from '../config'
 
+import { escapeHtmlText } from '../utils/common'
+
 import { telegramApiThrottler } from './telegramApiQueue'
 
 //
@@ -24,3 +26,12 @@ export const configureTelegramApi = api => {
     }),
   )
 }
+
+//
+//
+
+export const formatBotText = (text, tag) =>
+  `<${tag}>${escapeHtmlText(text)}</${tag}>`
+
+export const replyFormatted = (ctx, text, tag, options) =>
+  ctx.reply(formatBotText(text, tag), { ...options, parse_mode: 'HTML' })

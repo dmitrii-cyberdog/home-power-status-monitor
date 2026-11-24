@@ -76,7 +76,10 @@ test('addressed group help and start explain setup before authorization', async 
     assert.equal(replies[0].method, 'sendMessage')
     assert.equal(replies[0].payload.chat_id, -1007)
     assert.match(replies[0].payload.text, /Home Power Status Monitor/)
-    assert.match(replies[0].payload.text, /\n\/authorize_group -1007\n\n/)
+    assert.match(
+      replies[0].payload.text,
+      /\n<b>\/authorize_group -1007<\/b>\n\n/,
+    )
     assert.match(replies[0].payload.text, /\/status@power_test_bot/)
     assert.match(
       replies[0].payload.text,
@@ -108,8 +111,10 @@ test('private help explains private and group authorization', async () => {
   )
 
   assert.equal(replies.length, 1)
-  assert.match(replies[0].payload.text, /\/secret <value>/)
-  assert.match(replies[0].payload.text, /\/authorize_group <chat_id>/)
+  assert.equal(replies[0].payload.parse_mode, 'HTML')
+  assert.match(replies[0].payload.text, /<b>🏠 Home Power Status Monitor<\/b>/)
+  assert.match(replies[0].payload.text, /\/secret &lt;value&gt;/)
+  assert.match(replies[0].payload.text, /\/authorize_group &lt;chat_id&gt;/)
   assert.match(replies[0].payload.text, /\/help@power_test_bot/)
   assert.match(replies[0].payload.text, /\/admin/)
   assert.match(replies[0].payload.text, /\n\n/)

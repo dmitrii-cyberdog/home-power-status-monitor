@@ -1,25 +1,5 @@
 import { escapeHtmlText } from './common'
 
-export const splitPlainText = (text, limit) => {
-  const messages = []
-
-  while (text.length > limit) {
-    const end = /[\uD800-\uDBFF]/.test(text[limit - 1]) ? limit - 1 : limit
-
-    messages.push(text.slice(0, end))
-    text = text.slice(end)
-  }
-
-  if (text) {
-    messages.push(text)
-  }
-
-  return messages
-}
-
-//
-//
-
 export const chunkHtmlLines = (lines, limit) => {
   const messages = []
 

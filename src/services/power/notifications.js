@@ -137,12 +137,7 @@ export const createPowerNotifications = ({
             return false
           }
 
-          await send(
-            chatId,
-            text,
-            canDispatch,
-            status ? { parse_mode: 'HTML' } : undefined,
-          )
+          await send(chatId, text, canDispatch, { parse_mode: 'HTML' })
 
           started = true
         }

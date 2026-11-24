@@ -1,3 +1,5 @@
+import { replyFormatted } from '../../services/botApi'
+
 export const accessDeniedKey = ctx =>
   ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
     ? 'access_denied_group'
@@ -7,7 +9,7 @@ export const createAccessHandler =
   ({ access }) =>
   async (ctx, next) => {
     if (!access.isAuthorized(String(ctx.chat.id))) {
-      await ctx.reply(ctx.t(accessDeniedKey(ctx)))
+      await replyFormatted(ctx, ctx.t(accessDeniedKey(ctx)), 'i')
 
       return
     }

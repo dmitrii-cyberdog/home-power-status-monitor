@@ -1,3 +1,5 @@
+import { replyFormatted } from '../../services/botApi'
+
 import { createChatLocaleHandler } from './chatLocaleHandler'
 
 const MAX_PENDING_UPDATES_PER_SENDER = 3
@@ -15,7 +17,7 @@ const notifyBusy = async ctx => {
     if (ctx.callbackQuery) {
       await ctx.answerCallbackQuery({ text: message })
     } else if (ctx.msg) {
-      await ctx.reply(message)
+      await replyFormatted(ctx, message, 'i')
     }
   } catch (error) {
     ctx.log?.warning('bot_sender_queue_notice_failed', {

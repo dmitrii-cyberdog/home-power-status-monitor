@@ -1,6 +1,12 @@
 import { Composer, InlineKeyboard } from 'grammy'
 
-import { monitorValidation } from '../../services'
+import {
+  formatBotText,
+  monitorValidation,
+  replyFormatted,
+} from '../../services'
+
+import { escapeHtmlText } from '../../utils/common'
 
 import { parseIntervalArguments } from './monitor/intervalArguments'
 
@@ -22,7 +28,7 @@ const groupHeader = async (ctx, chatId) => {
 
 // The header is passed in so callbacks can reuse it without calling Telegram for the group.
 export const renderGroupCard = (group, header, homes, t) => {
-  const lines = [header, '']
+  const lines = [formatBotText(header, 'b'), '']
 
   const keyboard = new InlineKeyboard()
 
@@ -35,10 +41,12 @@ export const renderGroupCard = (group, header, homes, t) => {
         : t('admin_groups_interval', { minutes: String(state.intervalMinutes) })
 
     lines.push(
-      t(state.subscribed ? 'admin_groups_home_on' : 'admin_groups_home_off', {
-        home: home.name,
-        interval,
-      }),
+      escapeHtmlText(
+        t(state.subscribed ? 'admin_groups_home_on' : 'admin_groups_home_off', {
+          home: home.name,
+          interval,
+        }),
+      ),
     )
 
     keyboard
@@ -79,7 +87,7 @@ export const createAdminGroupCommands = ({
       }
 
       if (!admins.includes(ctx.from?.id)) {
-        await ctx.reply(ctx.t('admin_access_denied'))
+        await replyFormatted(ctx, ctx.t('admin_access_denied'), 'i')
 
         return
       }
@@ -107,7 +115,7 @@ export const createAdminGroupCommands = ({
     const groups = access.listGroups()
 
     if (groups.length === 0) {
-      await ctx.reply(ctx.t('admin_groups_none'))
+      await replyFormatted(ctx, ctx.t('admin_groups_none'), 'i')
 
       return
     }
@@ -122,7 +130,7 @@ export const createAdminGroupCommands = ({
         ctx.t.bind(ctx),
       )
 
-      await ctx.reply(text, { reply_markup })
+      await ctx.reply(text, { reply_markup, parse_mode: 'HTML' })
     }
   })
 
@@ -134,13 +142,13 @@ export const createAdminGroupCommands = ({
       const [target = '', ...nameParts] = ctx.match.trim().split(/\s+/)
 
       if (!isGroupId(target)) {
-        await ctx.reply(ctx.t('admin_group_toggle_usage'))
+        await replyFormatted(ctx, ctx.t('admin_group_toggle_usage'), 'i')
 
         return
       }
 
       if (!findGroup(target)) {
-        await ctx.reply(ctx.t('admin_groups_not_found'))
+        await replyFormatted(ctx, ctx.t('admin_groups_not_found'), 'i')
 
         return
       }
@@ -148,7 +156,7 @@ export const createAdminGroupCommands = ({
       const homes = targetHomes(nameParts.join(' '))
 
       if (!homes) {
-        await ctx.reply(ctx.t('monitor_not_found'))
+        await replyFormatted(ctx, ctx.t('monitor_not_found'), 'i')
 
         return
       }
@@ -170,7 +178,7 @@ export const createAdminGroupCommands = ({
         )
       }
 
-      await ctx.reply(lines.join('\n'))
+      await replyFormatted(ctx, lines.join('\n'), 'b')
     })
   }
 
@@ -183,7 +191,7 @@ export const createAdminGroupCommands = ({
       .split(/\s+/)
 
     if (!isGroupId(target)) {
-      await ctx.reply(ctx.t('admin_group_interval_usage'))
+      await replyFormatted(ctx, ctx.t('admin_group_interval_usage'), 'i')
 
       return
     }
@@ -201,19 +209,19 @@ export const createAdminGroupCommands = ({
     )
 
     if (parsed.error === 'usage') {
-      await ctx.reply(ctx.t('admin_group_interval_usage'))
+      await replyFormatted(ctx, ctx.t('admin_group_interval_usage'), 'i')
 
       return
     }
 
     if (!findGroup(target)) {
-      await ctx.reply(ctx.t('admin_groups_not_found'))
+      await replyFormatted(ctx, ctx.t('admin_groups_not_found'), 'i')
 
       return
     }
 
     if (parsed.error) {
-      await ctx.reply(ctx.t('monitor_not_found'))
+      await replyFormatted(ctx, ctx.t('monitor_not_found'), 'i')
 
       return
     }
@@ -236,7 +244,7 @@ export const createAdminGroupCommands = ({
       lines.push(ctx.t(key, { home: home.name, minutes: String(effective) }))
     }
 
-    await ctx.reply(lines.join('\n'))
+    await replyFormatted(ctx, lines.join('\n'), 'b')
   })
 
   //
@@ -308,7 +316,7 @@ export const createAdminGroupCommands = ({
       const { text, reply_markup } = card()
 
       try {
-        await ctx.editMessageText(text, { reply_markup })
+        await ctx.editMessageText(text, { reply_markup, parse_mode: 'HTML' })
       } catch {
         ctx.log?.warning('group_card_edit_failed', {
           updateId: ctx.update.update_id,
@@ -325,7 +333,7 @@ export const createAdminGroupCommands = ({
 
     const editCard = async (text, extra) => {
       try {
-        await ctx.editMessageText(text, extra)
+        await ctx.editMessageText(text, { ...extra, parse_mode: 'HTML' })
       } catch {
         ctx.log?.warning('group_card_edit_failed', {
           updateId: ctx.update.update_id,
@@ -335,11 +343,14 @@ export const createAdminGroupCommands = ({
 
     if (kind === 'del') {
       await ctx.answerCallbackQuery()
-      await editCard(`${header}\n\n${ctx.t('admin_groups_delete_confirm')}`, {
-        reply_markup: new InlineKeyboard()
-          .text(ctx.t('admin_groups_button_confirm'), `grp:delok:${chatId}`)
-          .text(ctx.t('admin_groups_button_cancel'), `grp:cancel:${chatId}`),
-      })
+      await editCard(
+        `${formatBotText(header, 'b')}\n\n${formatBotText(ctx.t('admin_groups_delete_confirm'), 'i')}`,
+        {
+          reply_markup: new InlineKeyboard()
+            .text(ctx.t('admin_groups_button_confirm'), `grp:delok:${chatId}`)
+            .text(ctx.t('admin_groups_button_cancel'), `grp:cancel:${chatId}`),
+        },
+      )
 
       return
     }
@@ -363,7 +374,9 @@ export const createAdminGroupCommands = ({
     }
 
     await ctx.answerCallbackQuery()
-    await editCard(`${header}\n\n${ctx.t('admin_groups_deleted')}`)
+    await editCard(
+      `${formatBotText(header, 'b')}\n\n${formatBotText(ctx.t('admin_groups_deleted'), 'b')}`,
+    )
   })
 
   return composer

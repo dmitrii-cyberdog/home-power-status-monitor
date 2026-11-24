@@ -78,6 +78,6 @@ for (const { error, description } of errorCases) {
       chatType: 'private',
       fromId: undefined,
     })
-    assert.equal(reply, 'Unknown error occurred! Please try again later')
+    assert.equal(reply, '<i>Unknown error occurred! Please try again later</i>')
   })
 }

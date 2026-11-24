@@ -9,6 +9,7 @@ import {
   isTelegramSendSkipped,
   getI18n,
   monitorMessages,
+  replyFormatted,
 } from '../../../services'
 
 import { parseIntervalArguments } from './intervalArguments'
@@ -81,7 +82,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
   composer.command('secret', async ctx => {
     try {
       if (ctx.chat.type !== 'private') {
-        await ctx.reply(ctx.t('access_group_secret_rejected'))
+        await replyFormatted(ctx, ctx.t('access_group_secret_rejected'), 'i')
 
         return
       }
@@ -98,9 +99,13 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
         locale,
       )
 
-      await ctx.reply(ctx.t(`access_${result}`))
+      await replyFormatted(
+        ctx,
+        ctx.t(`access_${result}`),
+        result === 'authorized' ? 'b' : 'i',
+      )
     } catch {
-      await ctx.reply(ctx.t('general_error'))
+      await replyFormatted(ctx, ctx.t('general_error'), 'i')
     } finally {
       try {
         await ctx.deleteMessage()
@@ -194,10 +199,12 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       )
 
       if (parsed.error) {
-        await ctx.reply(
+        await replyFormatted(
+          ctx,
           ctx.t(
             parsed.error === 'usage' ? 'interval_usage' : 'monitor_not_found',
           ),
+          'i',
         )
 
         return
@@ -219,7 +226,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
         key = 'interval_off'
       }
 
-      await ctx.reply(ctx.t(key, variables))
+      await replyFormatted(ctx, ctx.t(key, variables), 'b')
 
       return
     }
@@ -235,7 +242,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       .toLowerCase()
 
     if (!isStatus && !argument) {
-      await ctx.reply(ctx.t(`subscription_prompt_${command}`), {
+      await replyFormatted(ctx, ctx.t(`subscription_prompt_${command}`), 'i', {
         reply_markup: { force_reply: true, selective: true },
         reply_parameters: { message_id: ctx.message.message_id },
       })
@@ -250,7 +257,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       : undefined
 
     if (argument && !home) {
-      await ctx.reply(ctx.t('monitor_not_found'))
+      await replyFormatted(ctx, ctx.t('monitor_not_found'), 'i')
 
       return
     }
@@ -261,7 +268,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       const grant = access.captureGrant(chatId)
 
       if (!grant) {
-        await ctx.reply(ctx.t(accessDeniedKey(ctx)))
+        await replyFormatted(ctx, ctx.t(accessDeniedKey(ctx)), 'i')
 
         return
       }
@@ -287,7 +294,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
 
       for (const [index, text] of messages.entries()) {
         if (!access.isAuthorized(chatId)) {
-          await ctx.reply(ctx.t(accessDeniedKey(ctx)))
+          await replyFormatted(ctx, ctx.t(accessDeniedKey(ctx)), 'i')
 
           return
         }
@@ -327,7 +334,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       command === 'on_notification',
     )
 
-    await ctx.reply(ctx.t(`subscription_${result}`))
+    await replyFormatted(ctx, ctx.t(`subscription_${result}`), 'b')
   })
 
   composer.filter(

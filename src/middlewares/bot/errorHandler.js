@@ -2,7 +2,7 @@ import { GrammyError, HttpError } from 'grammy'
 
 // import config from '../../config'
 
-import { Logger } from '../../services'
+import { Logger, replyFormatted } from '../../services'
 
 export default bot => {
   bot.catch(async botError => {
@@ -38,10 +38,12 @@ export default bot => {
 
     try {
       if (ctx.chat) {
-        await ctx.reply(
+        await replyFormatted(
+          ctx,
           typeof ctx.t === 'function'
             ? ctx.t('general_error')
             : 'Unknown error occurred! Please try again later',
+          'i',
         )
       }
     } catch (replyError) {

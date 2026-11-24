@@ -17,11 +17,19 @@ import {
   telegramApiThrottler,
 } from '../../src/services/index.js'
 
+const telegramText = html =>
+  html
+    .replace(/<\/?[bi]>/g, '')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&')
+
 const notificationFixture = async (
   t,
   {
     chat = { id: -1007, type: 'supergroup', title: 'Home' },
     name = 'Family Home',
+    groupTitle = 'Family',
     notificationIntervalMinutes,
     admins = [],
     secret = 'test-only',
@@ -82,14 +90,17 @@ const notificationFixture = async (
         date: 1,
         chat,
         from: bot.botInfo,
-        text: payload.text,
+        text:
+          payload.parse_mode === 'HTML'
+            ? telegramText(payload.text)
+            : payload.text,
         reply_markup: payload.reply_markup,
       }
     } else if (method === 'getChat') {
       result = {
         id: Number(payload.chat_id),
         type: 'supergroup',
-        title: 'Family',
+        title: groupTitle,
       }
     }
 
@@ -168,9 +179,9 @@ test('replying to a notification prompt saves the setting and confirms it', asyn
   assert.equal(replies.length, 1)
   assert.equal(access.recipients('1', store.readChats()).length, 0)
   await send('Missing', prompt.message)
-  assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
+  assert.equal(replies.at(-1).payload.text, '<i>🔍 Home not found.</i>')
   await send(' family home ', prompt.message)
-  assert.equal(replies.at(-1).payload.text, '🔔 Notifications enabled.')
+  assert.equal(replies.at(-1).payload.text, '<b>🔔 Notifications enabled.</b>')
   assert.equal(
     access.recipients('1', store.readChats())[0].chatId,
     String(chat.id),
@@ -179,16 +190,20 @@ test('replying to a notification prompt saves the setting and confirms it', asyn
     force_reply: true,
     selective: true,
   })
+  assert.equal(prompt.payload.parse_mode, 'HTML')
   assert.equal(prompt.payload.reply_parameters.message_id, 1)
 
   await send('/on_notification@power_test_bot Family Home')
-  assert.equal(replies.at(-1).payload.text, '🔔 Notifications already enabled.')
+  assert.equal(
+    replies.at(-1).payload.text,
+    '<b>🔔 Notifications already enabled.</b>',
+  )
   await send('/off_notification@power_test_bot')
 
   const disablePrompt = replies.at(-1).message
 
   await send('Family Home', disablePrompt)
-  assert.equal(replies.at(-1).payload.text, '🔕 Notifications disabled.')
+  assert.equal(replies.at(-1).payload.text, '<b>🔕 Notifications disabled.</b>')
   assert.equal(access.recipients('1', store.readChats()).length, 0)
 
   const rotatedAccess = createChatAccess({ store, homes, secret: 'rotated' })
@@ -197,7 +212,7 @@ test('replying to a notification prompt saves the setting and confirms it', asyn
   await send('Family Home', prompt.message)
   assert.equal(
     replies.at(-1).payload.text,
-    '🔒 This group is not authorized. Ask a bot admin to approve it from a private chat.',
+    '<i>🔒 This group is not authorized. Ask a bot admin to approve it from a private chat.</i>',
   )
   assert.equal(rotatedAccess.recipients('1', store.readChats()).length, 0)
 })
@@ -303,16 +318,16 @@ test('configured bot admins can read localized admin help in private', async t =
 
   await send('/admin')
   assert.equal(replies.length, 1)
-  assert.match(replies.at(-1).payload.text, /Bot administration\n\n/)
-  assert.match(replies.at(-1).payload.text, /\/authorize_group <chat_id>/)
+  assert.match(replies.at(-1).payload.text, /Bot administration<\/b>\n\n/)
+  assert.match(replies.at(-1).payload.text, /\/authorize_group &lt;chat_id&gt;/)
   assert.match(replies.at(-1).payload.text, /\/help@power_test_bot/)
-  assert.match(replies.at(-1).payload.text, /\/clear_chats <chat_id>/)
+  assert.match(replies.at(-1).payload.text, /\/clear_chats &lt;chat_id&gt;/)
   assert.match(replies.at(-1).payload.text, /\/clear_chats all/)
   assert.match(replies.at(-1).payload.text, /authorize again and re-enable/)
 
   await send('/ru')
   await send('/admin')
-  assert.match(replies.at(-1).payload.text, /Управление ботом\n\n/)
+  assert.match(replies.at(-1).payload.text, /Управление ботом<\/b>\n\n/)
   assert.match(replies.at(-1).payload.text, /\/help@power_test_bot/)
   assert.match(replies.at(-1).payload.text, /\/clear_chats all/)
 })
@@ -326,7 +341,7 @@ test('admin help is restricted to configured admins in private chats', async t =
   await ordinary.send('/admin')
   assert.equal(
     ordinary.replies.at(-1)?.payload.text,
-    '🔒 Admin access required.',
+    '<i>🔒 Admin access required.</i>',
   )
 
   const group = await notificationFixture(t, { admins: [7] })
@@ -347,7 +362,7 @@ test('only a configured admin in a private chat can clear registry records', asy
   await ordinary.send('/clear_chats all')
   assert.equal(
     ordinary.replies.at(-1)?.payload.text,
-    '🔒 Admin access required.',
+    '<i>🔒 Admin access required.</i>',
   )
   assert.equal(ordinary.access.isAuthorized('7'), true)
 
@@ -381,7 +396,7 @@ test('only a configured admin in a private chat can clear registry records', asy
   assert.equal(access.isAuthorized('-1007'), false)
   assert.equal(access.isAuthorized('8'), true)
   await send('/clear_chats -1007')
-  assert.equal(replies.at(-1).payload.text, '🔍 Chat record not found.')
+  assert.equal(replies.at(-1).payload.text, '<i>🔍 Chat record not found.</i>')
   await send('/clear_chats all')
   assert.match(replies.at(-1).payload.text, /Chat records removed:.*1/)
   assert.equal(access.isAuthorized('8'), false)
@@ -410,7 +425,7 @@ test('clearing a chat during a status refresh revokes access to the result', asy
   await handling
   assert.deepEqual(
     replies.map(({ payload }) => payload.text),
-    ['🔒 Authorize this chat with /secret <value> first.'],
+    ['<i>🔒 Authorize this chat with /secret &lt;value&gt; first.</i>'],
   )
 })
 
@@ -579,7 +594,7 @@ test('protected commands gate home reads and group commands require addressing',
   await send('/status')
   assert.equal(reads, 0)
   assert.equal(checks, 0)
-  assert.equal(replies[0].payload.text, 'access_denied')
+  assert.equal(replies[0].payload.text, '<i>access_denied</i>')
   authorized = true
   await send('/status', 'supergroup')
   assert.equal(reads, 0)
@@ -730,7 +745,7 @@ test('full status shares authorization, addressing, refresh and named filtering'
     })
 
   await send('/status_full')
-  assert.equal(replies.at(-1)?.payload.text, 'access_denied')
+  assert.equal(replies.at(-1)?.payload.text, '<i>access_denied</i>')
   assert.equal(reads, 0)
   assert.equal(checks, 0)
   authorized = true
@@ -745,7 +760,7 @@ test('full status shares authorization, addressing, refresh and named filtering'
   assert.match(replies.at(-1).payload.text, /monitor_totals/)
   await send('/status_full Missing')
   assert.equal(checks, 1)
-  assert.equal(replies.at(-1).payload.text, 'monitor_not_found')
+  assert.equal(replies.at(-1).payload.text, '<i>monitor_not_found</i>')
   await send('/status_full')
   assert.equal(checks, 2)
   assert.match(replies.at(-1).payload.text, /Other Home/)
@@ -802,7 +817,7 @@ test('secret arguments remain exact and deletion failure does not change authori
     },
   })
   assert.deepEqual(supplied, [{ chatId: '7', value: ' exact secret ' }])
-  assert.equal(calls[0].payload.text, 'access_authorized')
+  assert.equal(calls[0].payload.text, '<b>access_authorized</b>')
   assert.equal(calls[1].method, 'deleteMessage')
   assert.doesNotMatch(JSON.stringify(calls), /exact secret|sentinel/)
 })
@@ -834,7 +849,7 @@ test('private chats still authorize with the secret', async t => {
 
   await send('/secret test-only')
   assert.equal(access.isAuthorized('7'), true)
-  assert.equal(replies[0].payload.text, '✅ Chat authorized.')
+  assert.equal(replies[0].payload.text, '<b>✅ Chat authorized.</b>')
   assert.doesNotMatch(JSON.stringify(replies), /test-only/)
 })
 
@@ -849,7 +864,7 @@ test('only a configured admin in a private chat can approve a group', async t =>
   await ordinary.send('/authorize_group -1007')
   assert.equal(
     ordinary.replies.at(-1).payload.text,
-    '🔒 Admin access required.',
+    '<i>🔒 Admin access required.</i>',
   )
   assert.equal(ordinary.access.isAuthorized('-1007'), false)
 
@@ -881,7 +896,7 @@ test('only a configured admin in a private chat can approve a group', async t =>
   assert.deepEqual(store.readChats().chats, {})
 
   await send('/authorize_group -1007')
-  assert.equal(replies.at(-1).payload.text, '✅ Group authorized.')
+  assert.equal(replies.at(-1).payload.text, '<b>✅ Group authorized.</b>')
   assert.equal(access.isAuthorized('-1007'), true)
 
   await access.setSubscription('-1007', '1', true)
@@ -898,7 +913,10 @@ test('group approval is refused while protected access is disabled', async t => 
   })
 
   await send('/authorize_group -1007')
-  assert.equal(replies.at(-1).payload.text, '🚫 Protected access is disabled.')
+  assert.equal(
+    replies.at(-1).payload.text,
+    '<i>🚫 Protected access is disabled.</i>',
+  )
   assert.equal(access.isAuthorized('-1007'), false)
 })
 
@@ -920,7 +938,7 @@ test('language commands persist a chat preference and keep group replies in that
 
   await send('/ru@power_test_bot', undefined, english)
   assert.equal(replies.length, 1)
-  assert.equal(replies[0].payload.text, '🌐 Язык чата: русский.')
+  assert.equal(replies[0].payload.text, '<b>🌐 Язык чата: русский.</b>')
   assert.equal(store.readChats().chats[String(chat.id)].locale, 'ru')
   assert.equal(access.isAuthorized(String(chat.id)), false)
 
@@ -938,12 +956,12 @@ test('language commands persist a chat preference and keep group replies in that
 
   await send('/en@power_test_bot', undefined, russian)
   assert.equal(replies.length, 5)
-  assert.equal(replies.at(-1).payload.text, '🌐 Chat language: English.')
+  assert.equal(replies.at(-1).payload.text, '<b>🌐 Chat language: English.</b>')
   await send('/status@power_test_bot', undefined, russian)
   assert.match(replies.at(-1).payload.text, /unknown/i)
   assert.equal(access.isSubscribed(String(chat.id), '1'), true)
   await send('Family Home', russianPrompt, russian)
-  assert.equal(replies.at(-1).payload.text, '🔕 Notifications disabled.')
+  assert.equal(replies.at(-1).payload.text, '<b>🔕 Notifications disabled.</b>')
   assert.equal(access.isSubscribed(String(chat.id), '1'), false)
 })
 
@@ -1075,7 +1093,7 @@ test('notification interval rejects invalid input and unknown homes', async t =>
   assert.equal(replies.at(-1).payload.reply_markup, undefined)
 
   await send('/notification_interval 30 Missing')
-  assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
+  assert.equal(replies.at(-1).payload.text, '<i>🔍 Home not found.</i>')
 })
 
 //
@@ -1129,6 +1147,8 @@ test('admins list approved groups privately with controls', async t => {
 
   assert.equal(sent.length, 1)
   assert.equal(sent[0].payload.chat_id, 7)
+  assert.equal(sent[0].payload.parse_mode, 'HTML')
+  assert.match(plain(sent[0].payload.text), /^<b>👥 Family \(-1007\)<\/b>/)
 
   const text = plain(sent[0].payload.text)
 
@@ -1161,7 +1181,10 @@ test('a group card shows the ID when the title is unavailable', async t => {
 })
 
 test('group toggle buttons change notifications silently', async t => {
-  const fixture = await adminFixture(t)
+  const fixture = await adminFixture(t, {
+    name: 'Home <West>',
+    groupTitle: 'Family & <Friends>',
+  })
 
   const { access, replies, click } = fixture
 
@@ -1176,8 +1199,17 @@ test('group toggle buttons change notifications silently', async t => {
   const edit = replies.find(({ method }) => method === 'editMessageText')
 
   assert.equal(edit.payload.chat_id, 7)
-  assert.match(plain(edit.payload.text), /Family \(-1007\)/)
+  assert.equal(edit.payload.parse_mode, 'HTML')
+  assert.match(
+    plain(edit.payload.text),
+    /<b>👥 Family &amp; &lt;Friends&gt; \(-1007\)<\/b>/,
+  )
+  assert.match(edit.payload.text, /Home &lt;West&gt;/)
   assert.match(plain(edit.payload.text), /notifications on/)
+  assert.match(
+    edit.payload.reply_markup.inline_keyboard[0][0].text,
+    /Home <West>/,
+  )
   assert.deepEqual(callbackData(edit.payload.reply_markup), [
     'grp:off:-1007:1',
     'grp:del:-1007',
@@ -1213,7 +1245,7 @@ test('deleting a group asks for confirmation and keeps the bot silent', async t 
   const restored = replies.at(-1)
 
   assert.equal(restored.method, 'editMessageText')
-  assert.equal(restored.payload.text, card.text)
+  assert.equal(restored.message.text, card.text)
   assert.deepEqual(restored.payload.reply_markup, card.reply_markup)
 
   await click(restored.message, 'grp:del:-1007')
@@ -1354,7 +1386,7 @@ test('typed group commands change notifications and intervals silently', async t
   assert.equal(access.listGroups()[0].homes[0].subscribed, false)
 
   await send('/group_off -1007 Missing')
-  assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
+  assert.equal(replies.at(-1).payload.text, '<i>🔍 Home not found.</i>')
 
   await send('/group_interval -1007 30')
   assert.equal(access.getIntervalMinutes('-1007', '1'), 30)
@@ -1365,7 +1397,7 @@ test('typed group commands change notifications and intervals silently', async t
   assert.match(replies.at(-1).payload.text, /default/)
 
   await send('/group_interval -1007 30 Missing')
-  assert.equal(replies.at(-1).payload.text, '🔍 Home not found.')
+  assert.equal(replies.at(-1).payload.text, '<i>🔍 Home not found.</i>')
 
   for (const text of ['/group_on', '/group_on 1007', '/group_off abc']) {
     await send(text)
@@ -1402,7 +1434,7 @@ test('group admin commands are restricted to admins in private chats', async t =
     await ordinary.send(text)
     assert.equal(
       ordinary.replies.at(-1).payload.text,
-      '🔒 Admin access required.',
+      '<i>🔒 Admin access required.</i>',
     )
   }
 
@@ -1422,9 +1454,12 @@ test('group admin commands are restricted to admins in private chats', async t =
 
   await admin.send('/admin')
   assert.match(admin.replies.at(-1).payload.text, /\/groups/)
-  assert.match(admin.replies.at(-1).payload.text, /\/group_on <chat_id>/)
-  assert.match(admin.replies.at(-1).payload.text, /\/group_interval <chat_id>/)
+  assert.match(admin.replies.at(-1).payload.text, /\/group_on &lt;chat_id&gt;/)
+  assert.match(
+    admin.replies.at(-1).payload.text,
+    /\/group_interval &lt;chat_id&gt;/,
+  )
   await admin.send('/ru')
   await admin.send('/admin')
-  assert.match(admin.replies.at(-1).payload.text, /\/group_off <chat_id>/)
+  assert.match(admin.replies.at(-1).payload.text, /\/group_off &lt;chat_id&gt;/)
 })

@@ -160,7 +160,10 @@ const summaryLines = (home, t, timestamp, brief = false) => {
 
 const homeLines = (statuses, t, render) => {
   if (statuses.length === 0) {
-    return messageChunks.chunkHtmlLines([[t('monitor_empty')]], messageLimit)
+    return messageChunks.chunkHtmlLines(
+      [[t('monitor_empty'), 'i']],
+      messageLimit,
+    )
   }
 
   const lines = []
@@ -194,6 +197,7 @@ const deviceLines = (device, t, timestamp) => {
   const lines = [
     [
       `📷 ${device.name}: ${t(`monitor_device_${device.status}`)} ${deviceIcons[device.status]}`,
+      'b',
     ],
     [`👁 ${t('monitor_observed')}: ${timestamp(device.observedAt)}`],
     [`🔁 ${t('monitor_offline_streak')}: ${device.offlineStreak}`],
@@ -262,22 +266,27 @@ export const renderPowerAlert = (delivery, home, t) => {
   const outage = delivery.state === 'off'
 
   const lines = [
-    `⚡ ${outage ? '❌' : '✅'} ${t(outage ? 'monitor_outage' : 'monitor_restored')}`,
-    '',
-    `🏠 ${home.name}`,
-    `🕒 ${homeTimestamp(delivery.detectedAt, t, home.timeZone, notificationFormat)}${delivery.baseline ? ` (${t('monitor_baseline')})` : ''}`,
+    [
+      `⚡ ${outage ? '❌' : '✅'} ${t(outage ? 'monitor_outage' : 'monitor_restored')}`,
+      'b',
+    ],
+    [''],
+    [`🏠 ${home.name}`, 'b'],
+    [
+      `🕒 ${homeTimestamp(delivery.detectedAt, t, home.timeZone, notificationFormat)}${delivery.baseline ? ` (${t('monitor_baseline')})` : ''}`,
+    ],
   ]
 
   const { previousOffAt, precedingStateMs } = delivery.history ?? {}
 
   if (previousOffAt || precedingStateMs != null) {
-    lines.push('')
+    lines.push([''])
   }
 
   if (!outage && previousOffAt) {
-    lines.push(
+    lines.push([
       `🔌 ${t('monitor_restored_off_at')} ${homeTimestamp(previousOffAt, t, home.timeZone, notificationFormat)}`,
-    )
+    ])
   }
 
   if (!outage) {
@@ -289,33 +298,35 @@ export const renderPowerAlert = (delivery, home, t) => {
     const downtime = precedingStateMs ?? (elapsed >= 0 ? elapsed : null)
 
     if (downtime != null) {
-      lines.push(
+      lines.push([
         `⏱ ${t('monitor_restored_downtime')} ${precedingStateMs == null ? '≈ ' : ''}${duration(downtime, t, true)}`,
-      )
+      ])
     }
   } else if (precedingStateMs != null) {
-    lines.push(
+    lines.push([
       `⏱ ${t('monitor_observed_uptime')}: ${duration(precedingStateMs, t, true)}`,
-    )
+    ])
   }
 
   if (outage && previousOffAt) {
-    lines.push(
+    lines.push([
       `📅 ${t('monitor_previous_outage')}: ${homeTimestamp(previousOffAt, t, home.timeZone, notificationFormat)}`,
-    )
+    ])
 
     const elapsed = Date.parse(delivery.detectedAt) - Date.parse(previousOffAt)
 
     if (elapsed >= 0) {
-      lines.push(
-        `↔️ ${t('monitor_between_outages')}: ${duration(elapsed, t, true)}`,
-      )
+      const sincePreviousOutage = duration(elapsed, t, true)
+
+      lines.push([
+        `↔️ ${t('monitor_between_outages', { duration: sincePreviousOutage })}`,
+      ])
     }
   }
 
   if (delivery.uncertain) {
-    lines.push('', `⚠️ ${t('monitor_uncertain')}`)
+    lines.push([''], [`⚠️ ${t('monitor_uncertain')}`, 'i'])
   }
 
-  return messageChunks.splitPlainText(lines.join('\n'), messageLimit)
+  return messageChunks.chunkHtmlLines(lines, messageLimit)
 }

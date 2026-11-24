@@ -1,25 +1,25 @@
 ﻿start = 👋 Home Power Status Monitor is ready. Use /help.
 help =
-    📋 Commands
+    <b>📋 Commands</b>
 
     ⚡ /status [home name] — brief power status
     📊 /status_full [home name] — detailed status and history
-    🔔 /on_notification <home name> — enable notifications
-    🔕 /off_notification <home name> — disable notifications
-    ⏱ /notification_interval <minutes|default|0> [home name] — set recurring status interval
+    🔔 /on_notification &lt;home name&gt; — enable notifications
+    🔕 /off_notification &lt;home name&gt; — disable notifications
+    ⏱ /notification_interval &lt;minutes|default|0&gt; [home name] — set recurring status interval
     🌐 /en or /ru — change this chat’s language
 help_private_access =
-    🏠 Home Power Status Monitor
+    <b>🏠 Home Power Status Monitor</b>
 
-    🔑 Send /secret <value> here to authorize this private chat.
-    👥 To approve a group, a configured bot admin sends /authorize_group <chat_id> here. Run { $helpCommand } in the group to get its chat ID.
+    🔑 Send /secret &lt;value&gt; here to authorize this private chat.
+    👥 To approve a group, a configured bot admin sends /authorize_group &lt;chat_id&gt; here. Run { $helpCommand } in the group to get its chat ID.
 
-    🛠 Bot admins can use /admin for admin commands.
+    <i>🛠 Bot admins can use /admin for admin commands.</i>
 help_group_access =
-    🏠 Home Power Status Monitor
+    <b>🏠 Home Power Status Monitor</b>
 
     🔑 Use /secret only in a private chat. A configured bot admin can approve this group by sending the command below in a private chat with the bot.
-help_group_commands = 💡 In groups, address commands to this bot by username, for example { $helpCommand } or { $statusCommand }.
+help_group_commands = <i>💡 In groups, address commands to this bot by username, for example { $helpCommand } or { $statusCommand }.</i>
 language_selected = 🌐 Chat language: English.
 general_error = ⚠️ Operation failed. Please try again later.
 pending_request_exists = ⏳ Your previous requests are still processing. Please wait a moment.
@@ -32,20 +32,20 @@ access_disabled = 🚫 Protected access is disabled.
 access_rate_limited = ⏳ Too many attempts. Try again in a minute.
 admin_access_denied = 🔒 Admin access required.
 admin_help =
-    🛠 Bot administration
+    <b>🛠 Bot administration</b>
 
-    👥 /authorize_group <chat_id> — approve a group. Send { $helpCommand } in the group to get its negative chat ID.
+    👥 /authorize_group &lt;chat_id&gt; — approve a group. Send { $helpCommand } in the group to get its negative chat ID.
 
     📋 /groups — list connected groups with notification and delete buttons.
-    🔔 /group_on <chat_id> [home name] — enable a group’s notifications.
-    🔕 /group_off <chat_id> [home name] — disable a group’s notifications.
-    ⏱ /group_interval <chat_id> <minutes|default|0> [home name] — set a group’s recurring status interval.
-    🤫 Without a home name these commands change every home. Nothing is posted to the group.
+    🔔 /group_on &lt;chat_id&gt; [home name] — enable a group’s notifications.
+    🔕 /group_off &lt;chat_id&gt; [home name] — disable a group’s notifications.
+    ⏱ /group_interval &lt;chat_id&gt; &lt;minutes|default|0&gt; [home name] — set a group’s recurring status interval.
+    <i>🤫 Without a home name these commands change every home. Nothing is posted to the group.</i>
 
-    🧹 /clear_chats <chat_id> — remove one chat’s access and notification subscriptions.
+    🧹 /clear_chats &lt;chat_id&gt; — remove one chat’s access and notification subscriptions.
     🧹 /clear_chats all — remove access and notification subscriptions for every chat.
 
-    ⚠️ Cleared chats must authorize again and re-enable notifications.
+    <i>⚠️ Cleared chats must authorize again and re-enable notifications.</i>
 admin_clear_usage = ℹ️ Use /clear_chats <chat_id> or /clear_chats all.
 admin_authorize_group_usage = ℹ️ Use /authorize_group <chat_id> with a negative group chat ID.
 admin_group_authorized = ✅ Group authorized.
@@ -111,7 +111,7 @@ monitor_restored_off_at = Power went off at
 monitor_observed_uptime = Observed time with power
 monitor_restored_downtime = Power was out for
 monitor_previous_outage = Previous outage detected at
-monitor_between_outages = Time between outage detections
+monitor_between_outages = Previous outage was: { $duration } ago
 monitor_not_observed = Not observed
 monitor_status_unknown = Power status unknown
 monitor_last_confirmed = Last check

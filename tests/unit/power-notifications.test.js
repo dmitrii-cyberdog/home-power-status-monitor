@@ -100,10 +100,10 @@ test('pending outage and restoration alerts use each chat preference on retry', 
   fail = false
   await dispatcher.flush()
   assert.deepEqual(sent.sort(), [
-    ['1', '⚡ ✅ ru:monitor_restored'],
-    ['1', '⚡ ❌ ru:monitor_outage'],
-    ['2', '⚡ ✅ en:monitor_restored'],
-    ['2', '⚡ ❌ en:monitor_outage'],
+    ['1', '<b>⚡ ✅ ru:monitor_restored</b>'],
+    ['1', '<b>⚡ ❌ ru:monitor_outage</b>'],
+    ['2', '<b>⚡ ✅ en:monitor_restored</b>'],
+    ['2', '<b>⚡ ❌ en:monitor_outage</b>'],
   ])
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
 })
@@ -164,11 +164,13 @@ for (const [notificationIntervalMode, expected] of [
       now: () => now,
       getStatuses: () => [{ id: '1', status }],
       renderAlert: delivery => [delivery.state],
-      renderStatus: snapshot => [snapshot.status],
-      send: async (_chatId, body, _guard, options) => {
-        const sent = options ? updates : alerts
-
-        sent.push(body)
+      renderStatus: snapshot => ['status:' + snapshot.status],
+      send: async (_chatId, body) => {
+        if (body.startsWith('status:')) {
+          updates.push(body.slice('status:'.length))
+        } else {
+          alerts.push(body)
+        }
       },
     })
 
@@ -600,7 +602,7 @@ test('an eligible alert is still delivered through the guarded queue', async t =
 
   assert.equal(sent.length, 1)
   assert.equal(sent[0].method, 'sendMessage')
-  assert.deepEqual(Object.keys(sent[0].payload).sort(), ['chat_id', 'text'])
+  assert.equal(sent[0].payload.parse_mode, 'HTML')
   assert.equal(sent[0].payload.chat_id, '7')
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
   assert.deepEqual(errors, [])
@@ -742,17 +744,16 @@ test('a full alert tick during a periodic send drains the pending alert', async 
 
   await runtime.drainNotifications()
 
-  assert.deepEqual(
-    sent.map(call => call.payload.parse_mode),
-    [undefined, 'HTML', undefined],
-  )
+  assert.deepEqual(sent.map(isTransitionAlert), [true, false, true])
   assert.deepEqual(store.readHome('1').pendingDeliveries, [])
 })
+
+const isTransitionAlert = call => call.payload.text.startsWith('<b>⚡ ')
 
 const periodicSends = (sent, chatId) =>
   sent.filter(
     call =>
-      call.payload.parse_mode === 'HTML' &&
+      !isTransitionAlert(call) &&
       String(call.payload.chat_id) === String(chatId),
   ).length
 
