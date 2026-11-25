@@ -80,6 +80,25 @@ export const reduceHomeObservation = (
 
         next.eventSequence++
 
+        if (status === 'on') {
+          if (
+            record.lastOff &&
+            !record.lastOff.baseline &&
+            history.precedingStateMs > 0
+          ) {
+            next.recentOutages = [
+              {
+                restorationSequence: next.eventSequence,
+                startedAt: record.lastOff.detectedAt,
+                restoredAt: observedAt,
+              },
+              ...next.recentOutages,
+            ].slice(0, 10)
+          }
+
+          history.recentOutages = next.recentOutages
+        }
+
         for (const recipient of recipients) {
           if (next.pendingDeliveries.length >= 1000) {
             next.droppedAlerts++
@@ -109,6 +128,71 @@ export const reduceHomeObservation = (
 
   return next
 }
+
+//
+//
+
+const minutesPerDay = 1440
+const millisecondsPerMinute = 60000
+const millisecondsPerDay = minutesPerDay * millisecondsPerMinute
+const fullCircle = 2 * Math.PI
+
+const averageClockTime = timestamps => {
+  let sine = 0
+  let cosine = 0
+
+  for (const timestamp of timestamps) {
+    const angle =
+      ((Date.parse(timestamp) % millisecondsPerDay) / millisecondsPerDay) *
+      fullCircle
+
+    sine += Math.sin(angle)
+    cosine += Math.cos(angle)
+  }
+
+  if (Math.hypot(sine, cosine) / timestamps.length < 1e-9) {
+    return null
+  }
+
+  const angle = Math.atan2(sine, cosine)
+  const minutes =
+    (((angle + fullCircle) % fullCircle) / fullCircle) * minutesPerDay
+  const roundingTolerance = Number.EPSILON * minutesPerDay * 4
+  const minute = Math.round(minutes + roundingTolerance) % minutesPerDay
+
+  return new Date(minute * millisecondsPerMinute).toISOString()
+}
+
+export const summarizeRecentOutages = (recentOutages, restorationSequence) => {
+  const count = recentOutages.length
+
+  if (!count) {
+    return null
+  }
+
+  const totalDurationMs = recentOutages.reduce(
+    (total, { startedAt, restoredAt }) =>
+      total + (Date.parse(restoredAt) - Date.parse(startedAt)),
+    0,
+  )
+
+  return {
+    count,
+    averageDurationMs: totalDurationMs / count,
+    averageStartedAt: averageClockTime(
+      recentOutages.map(entry => entry.startedAt),
+    ),
+    averageRestoredAt: averageClockTime(
+      recentOutages.map(entry => entry.restoredAt),
+    ),
+    previousOutages: recentOutages
+      .filter(entry => entry.restorationSequence !== restorationSequence)
+      .slice(0, 5),
+  }
+}
+
+//
+//
 
 export const projectHomeStatus = (
   record,

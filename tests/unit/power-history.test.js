@@ -172,6 +172,7 @@ test('transition deliveries snapshot previous detections and supported episode d
         previousOnAt: null,
         previousOffAt: '2026-11-20T08:00:00.000Z',
         precedingStateMs: 5400000,
+        recentOutages: [],
       },
       {
         previousOnAt: '2026-11-20T09:30:00.000Z',
@@ -182,6 +183,13 @@ test('transition deliveries snapshot previous detections and supported episode d
         previousOnAt: '2026-11-20T09:30:00.000Z',
         previousOffAt: '2026-11-20T12:00:00.000Z',
         precedingStateMs: 3600000,
+        recentOutages: [
+          {
+            restorationSequence: 4,
+            startedAt: '2026-11-20T12:00:00.000Z',
+            restoredAt: '2026-11-20T13:00:00.000Z',
+          },
+        ],
       },
       {
         previousOnAt: '2026-11-20T13:00:00.000Z',
@@ -237,6 +245,146 @@ const observeAll = (samples, record = monitorRecords.createHomeRecord('1')) => {
 
   return record
 }
+
+test('completed outage history survives missing recipients and a full queue', () => {
+  let record = observeAll([
+    [0, 'on'],
+    [60, 'off'],
+    [120, 'on'],
+  ])
+  const firstRecovery = record.pendingDeliveries.at(-1)
+
+  for (let index = 1; index < 12; index++) {
+    for (const [offset, status] of [
+      [60, 'off'],
+      [120, 'on'],
+      [150, 'on'],
+    ]) {
+      record = powerHistory.reduceHomeObservation(
+        record,
+        {
+          status,
+          observedAt: new Date((index * 180 + offset) * 1000).toISOString(),
+        },
+        { ...graceOptions, runId: 'run', recipients: [] },
+      )
+    }
+  }
+
+  assert.deepEqual(
+    record.recentOutages?.map(entry => entry.restorationSequence),
+    [24, 22, 20, 18, 16, 14, 12, 10, 8, 6],
+  )
+  assert.deepEqual(firstRecovery.history.recentOutages, [
+    {
+      restorationSequence: 2,
+      startedAt: new Date(60000).toISOString(),
+      restoredAt: new Date(120000).toISOString(),
+    },
+  ])
+
+  record.pendingDeliveries = Array(1000).fill(firstRecovery)
+  const saturated = observeAll(
+    [
+      [2220, 'off'],
+      [2280, 'on'],
+    ],
+    record,
+  )
+
+  assert.equal(saturated.droppedAlerts, 2)
+  assert.equal(saturated.recentOutages[0].restorationSequence, 26)
+})
+
+test('recovery history skips baselines, gaps and nonpositive outage durations', () => {
+  const record = observeAll([
+    [0, 'off'],
+    [60, 'on'],
+    [120, 'off'],
+    [180, 'on'],
+    [240, 'off'],
+    [600, 'on'],
+    [660, 'off'],
+    [660, 'on'],
+    [720, 'off'],
+    [710, 'on'],
+  ])
+
+  assert.deepEqual(
+    record.recentOutages?.map(entry => entry.restorationSequence),
+    [4],
+  )
+  assert.deepEqual(
+    record.pendingDeliveries.at(-1).history.recentOutages,
+    record.recentOutages,
+  )
+})
+
+test('outage summaries average clock times across midnight and limit historical rows', () => {
+  const recent = [
+    {
+      restorationSequence: 4,
+      startedAt: '2026-11-24T00:10:00.000Z',
+      restoredAt: '2026-11-24T04:10:00.000Z',
+    },
+    {
+      restorationSequence: 2,
+      startedAt: '2026-11-22T23:50:00.000Z',
+      restoredAt: '2026-11-23T01:50:00.000Z',
+    },
+  ]
+
+  assert.equal(typeof powerHistory.summarizeRecentOutages, 'function')
+  const summary = powerHistory.summarizeRecentOutages(recent, 4)
+
+  assert.equal(summary.count, 2)
+  assert.equal(summary.averageDurationMs, 10800000)
+  assert.equal(summary.averageStartedAt.slice(11, 16), '00:00')
+  assert.equal(summary.averageRestoredAt.slice(11, 16), '03:00')
+  assert.deepEqual(summary.previousOutages, [recent[1]])
+  assert.equal(powerHistory.summarizeRecentOutages([], 4), null)
+
+  const opposite = ['00', '12'].map(hour => ({
+    startedAt: `2026-11-24T${hour}:00:00.000Z`,
+    restoredAt: `2026-11-24T${hour}:10:00.000Z`,
+  }))
+
+  assert.equal(
+    powerHistory.summarizeRecentOutages(opposite, 4).averageStartedAt,
+    null,
+  )
+
+  const full = Array.from({ length: 10 }, (_, index) => ({
+    ...recent[0],
+    restorationSequence: 20 - index * 2,
+  }))
+
+  assert.equal(powerHistory.summarizeRecentOutages(full, 20).count, 10)
+  assert.deepEqual(
+    powerHistory.summarizeRecentOutages(full, 20).previousOutages,
+    full.slice(1, 6),
+  )
+  assert.deepEqual(
+    powerHistory.summarizeRecentOutages(full, 22).previousOutages,
+    full.slice(0, 5),
+  )
+})
+
+test('average outage times round half minutes up', () => {
+  const summary = powerHistory.summarizeRecentOutages(
+    [
+      {
+        restorationSequence: 2,
+        startedAt: '2026-11-24T00:02:30.000Z',
+        restoredAt: '2026-11-24T23:59:30.000Z',
+      },
+    ],
+    2,
+  )
+
+  assert.equal(summary.averageStartedAt.slice(11, 16), '00:03')
+  assert.equal(summary.averageRestoredAt.slice(11, 16), '00:00')
+})
 
 test('a restart with streak-rebuild unknowns keeps the off duration', () => {
   const record = observeAll([

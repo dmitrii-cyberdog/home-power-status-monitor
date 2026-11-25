@@ -107,6 +107,15 @@ subscription_prompt_on_notification = 🔔 Reply with the home name to enable no
 subscription_prompt_off_notification = 🔕 Reply with the home name to disable notifications.
 monitor_outage = Power outage detected
 monitor_restored = Power restored
+monitor_recovery_outage_sample = Outage statistics ({ $count ->
+    [one] { $count } outage
+   *[other] { $count } outages
+    })
+monitor_recovery_average_downtime = Average downtime { $duration }
+monitor_recovery_average_start = Average outage start { $time }
+monitor_recovery_average_restore = Average restoration { $time }
+monitor_recovery_no_clear_average = No clear average
+monitor_recovery_previous_outages = Previous outages
 monitor_restored_off_at = Power went off at
 monitor_observed_uptime = With power
 monitor_restored_downtime = Power was out for

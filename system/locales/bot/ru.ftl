@@ -107,6 +107,17 @@ subscription_prompt_on_notification = 🔔 Ответьте названием �
 subscription_prompt_off_notification = 🔕 Ответьте названием дома, чтобы отключить уведомления.
 monitor_outage = Обнаружено отключение электричества
 monitor_restored = Электричество восстановлено
+monitor_recovery_outage_sample = Статистика отключений ({ $count ->
+    [one] { $count } отключение
+    [few] { $count } отключения
+    [many] { $count } отключений
+   *[other] { $count } отключения
+    })
+monitor_recovery_average_downtime = Средняя длительность отключения { $duration }
+monitor_recovery_average_start = Среднее время отключения { $time }
+monitor_recovery_average_restore = Среднее время восстановления { $time }
+monitor_recovery_no_clear_average = Нет выраженного среднего
+monitor_recovery_previous_outages = Предыдущие отключения
 monitor_restored_off_at = Было отключено в
 monitor_observed_uptime = Время с электричеством
 monitor_restored_downtime = Электричество отсутствовало

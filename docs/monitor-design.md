@@ -39,12 +39,15 @@ freshness or the physical switching time.
 
 `volume/homes/<id>.json` retains observations, last on/off detections,
 cumulative sampled on/off/uncertain milliseconds, outage count, sequence and
-pending alerts. `volume/chats.json` stores a salted scrypt verifier,
-authorization generation, chat grants and subscriptions. Credentials and
-provider tokens are not stored. Each update uses a same-directory temporary file
-and atomic rename before the in-memory snapshot changes. Corrupt records fail
-startup without resetting data. Removed home files remain untouched. Renaming a
-home preserves its history; never reuse an ID for another physical home.
+pending alerts. It also holds up to ten completed outages with a detected start
+and a positive duration supported by the continuity rules. Existing records
+start with an empty outage list. `volume/chats.json` stores a salted scrypt
+verifier, authorization generation, chat grants and subscriptions. Credentials
+and provider tokens are not stored. Each update uses a same-directory temporary
+file and atomic rename before the in-memory snapshot changes. Corrupt records
+fail startup without resetting data. Removed home files remain untouched.
+Renaming a home preserves its history; never reuse an ID for another physical
+home.
 
 An initial on/off result is a baseline with unknown actual start. Initial off
 sends an outage alert; initial on does not send restoration. Equal decisive
@@ -192,6 +195,12 @@ window leave uptime unknown. The time between detections is elapsed wall time.
 Stored timestamps remain UTC. The bot formats notification dates in the home's
 fixed offset and includes the zone label. Both manual status commands use each
 home’s configured zone, including device observation times in `/status_full`.
+
+Recovery alerts save a snapshot of the outage list when queued. The snapshot
+provides average downtime, detected start and restoration times, plus up to five
+earlier outages. The just-restored outage contributes to the averages when its
+duration qualifies. It appears in the main alert and is skipped in the history
+rows. Clock-time averages wrap across midnight.
 
 The notification worker sends the brief cached status to current subscribers on
 each subscriber's effective interval: the chat override, else the

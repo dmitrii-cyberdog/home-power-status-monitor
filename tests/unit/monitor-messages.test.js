@@ -41,6 +41,63 @@ const translate = locale => {
     i18n.t(locale, key, variables).replace(/[\u2068\u2069]/g, '')
 }
 
+test('recovery alerts show localized averages and earlier outages in home time', () => {
+  const recentOutages = [
+    {
+      restorationSequence: 4,
+      startedAt: '2026-11-24T00:10:00.000Z',
+      restoredAt: '2026-11-24T04:10:00.000Z',
+    },
+    {
+      restorationSequence: 2,
+      startedAt: '2026-11-22T23:50:00.000Z',
+      restoredAt: '2026-11-23T01:50:00.000Z',
+    },
+  ]
+
+  const delivery = {
+    state: 'on',
+    sequence: 4,
+    detectedAt: recentOutages[0].restoredAt,
+    history: { recentOutages },
+  }
+  const target = home({ timeZone: 'GMT+5:30' })
+  const render = (locale, event = delivery, destination = target) =>
+    messages.renderPowerAlert(event, destination, translate(locale))
+
+  const english = render('en').join('\n')
+  assert.match(english, /Outage statistics \(2 outages\)/)
+  assert.match(english, /Average downtime 3 hours/)
+  assert.match(english, /Average outage start 05:30/)
+  assert.match(english, /Average restoration 08:30/)
+  assert.match(english, /❌ 23\.11 05:20:00 - ✅ 23\.11 07:20:00 \(2 hours\)/)
+  assert.doesNotMatch(english, /❌ 24\.11 05:40:00/)
+
+  const russian = render('ru').join('\n')
+  assert.match(russian, /Средняя длительность отключения 3 часа/)
+  assert.match(russian, /❌ 23\.11 05:20:00 - ✅ 23\.11 07:20:00 \(2 часа\)/)
+
+  const oneOutage = render('en', {
+    ...delivery,
+    history: { recentOutages: recentOutages.slice(0, 1) },
+  }).join('\n')
+  assert.match(oneOutage, /Outage statistics \(1 outage\)/)
+  assert.doesNotMatch(oneOutage, /Previous outages/)
+
+  for (const event of [
+    { ...delivery, state: 'off' },
+    { ...delivery, history: {} },
+    { ...delivery, history: { recentOutages: [] } },
+  ]) {
+    assert.doesNotMatch(render('en', event).join('\n'), /Outage statistics/)
+  }
+
+  const chunks = render('en', delivery, { ...target, name: '<&'.repeat(1500) })
+  assert.ok(chunks.length > 1)
+  assert.match(chunks.join('\n'), /&lt;&amp;/)
+  assert.match(chunks.join('\n'), /Previous outages/)
+})
+
 test('power alerts display the localized state, home and timestamp on separate lines', () => {
   const delivery = {
     eventId: '1:25',
@@ -458,7 +515,7 @@ test('restore alerts show off time and downtime, approximate when continuity is 
 
   assert.match(
     approximate,
-    /🔌 Было отключено в 20\.11\.2026 18:58:43 \(местн\. вр\.\)\n⏱ Электричество отсутствовало ≈ 20 часов 39 минут/,
+    /⏱ Электричество отсутствовало ≈ 20 часов 39 минут\n🔌 Было отключено в 20\.11\.2026 18:58:43 \(местн\. вр\.\)/,
   )
   assert.match(approximate, /⚠️ Непрерывность неизвестна/)
   assert.doesNotMatch(approximate, /Отключение обнаружено/)

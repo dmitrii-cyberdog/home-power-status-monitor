@@ -1,20 +1,23 @@
 import { getDayJs, messageChunks } from '../../utils'
 
+import { powerHistory } from '../power'
+
 const messageLimit = 4000
 
-const homeTimestamp = (value, t, timeZone = 'UTC', format) => {
-  if (!value) {
-    return t('monitor_not_observed')
-  }
-
+const homeDate = (value, timeZone = 'UTC') => {
   const [hours, minutes = '0'] = timeZone.slice(4).split(':')
 
   const sign = timeZone.startsWith('GMT-') ? -1 : 1
 
   const offset = sign * (Number(hours) * 60 + Number(minutes))
 
-  return `${getDayJs()(value).add(offset, 'minute').format(format)} (${t('monitor_local_time')})`
+  return getDayJs()(value).add(offset, 'minute')
 }
+
+const homeTimestamp = (value, t, timeZone, format) =>
+  value
+    ? `${homeDate(value, timeZone).format(format)} (${t('monitor_local_time')})`
+    : t('monitor_not_observed')
 
 const statusFormat = 'DD.MM.YYYY HH:mm'
 
@@ -262,6 +265,61 @@ export const renderFullStatusMessages = (statuses, t) =>
     return lines
   })
 
+//
+//
+
+const recoveryStatisticsLines = (delivery, timeZone, t) => {
+  const summary = powerHistory.summarizeRecentOutages(
+    delivery.history?.recentOutages ?? [],
+    delivery.sequence,
+  )
+
+  if (!summary) {
+    return []
+  }
+
+  const clock = value =>
+    value
+      ? homeDate(value, timeZone).format('HH:mm')
+      : t('monitor_recovery_no_clear_average')
+
+  const lines = [
+    [''],
+    [t('monitor_recovery_outage_sample', { count: summary.count }), 'b'],
+    [
+      t('monitor_recovery_average_downtime', {
+        duration: duration(summary.averageDurationMs, t, true),
+      }),
+    ],
+    [
+      t('monitor_recovery_average_start', {
+        time: clock(summary.averageStartedAt),
+      }),
+    ],
+    [
+      t('monitor_recovery_average_restore', {
+        time: clock(summary.averageRestoredAt),
+      }),
+    ],
+  ]
+
+  if (summary.previousOutages.length) {
+    lines.push([''], [t('monitor_recovery_previous_outages'), 'b'])
+
+    for (const { startedAt, restoredAt } of summary.previousOutages) {
+      const start = homeDate(startedAt, timeZone).format('DD.MM HH:mm:ss')
+      const end = homeDate(restoredAt, timeZone).format('DD.MM HH:mm:ss')
+      const elapsed = Date.parse(restoredAt) - Date.parse(startedAt)
+
+      lines.push([
+        `${stateIcons.off} ${start} - ${stateIcons.on} ${end} (${duration(elapsed, t, true)})`,
+      ])
+    }
+  }
+
+  return lines
+}
+
 export const renderPowerAlert = (delivery, home, t) => {
   const outage = delivery.state === 'off'
 
@@ -326,6 +384,10 @@ export const renderPowerAlert = (delivery, home, t) => {
 
   if (delivery.uncertain) {
     lines.push([''], [`⚠️ ${t('monitor_uncertain')}`, 'i'])
+  }
+
+  if (!outage) {
+    lines.push(...recoveryStatisticsLines(delivery, home.timeZone, t))
   }
 
   return messageChunks.chunkHtmlLines(lines, messageLimit)

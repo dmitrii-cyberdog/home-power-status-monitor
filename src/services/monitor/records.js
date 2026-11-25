@@ -18,6 +18,7 @@ export const createHomeRecord = id => ({
     outageCount: 0, // Detected off episodes, including an off baseline.
   },
   eventSequence: 0, // Last alert event number for this home, or zero before any.
+  recentOutages: [],
   pendingDeliveries: [], // Outstanding alert deliveries, one per event and chat.
   droppedAlerts: 0, // Deliveries omitted when the pending queue was full.
 })

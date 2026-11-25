@@ -245,3 +245,91 @@ test('home validation accepts legacy and current deliveries and rejects invalid 
     )
   }
 })
+
+test('legacy home records load and persist bounded recovery snapshots', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'monitor-outages-'))
+  let store
+  t.after(async () => {
+    await store?.close()
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  const { recentOutages, ...legacy } = monitorRecords.createHomeRecord('1')
+  assert.deepEqual(recentOutages, [])
+
+  const startedAt = '2026-11-24T13:00:55.000Z'
+  const restoredAt = '2026-11-24T21:00:55.000Z'
+  const delivery = {
+    eventId: '1:2',
+    sequence: 2,
+    state: 'on',
+    detectedAt: restoredAt,
+    baseline: false,
+    uncertain: false,
+    chatId: '1',
+    generation: 'g',
+    subscriptionId: 's',
+    locale: 'en',
+  }
+  const history = {
+    previousOnAt: null,
+    previousOffAt: startedAt,
+    precedingStateMs: 28800000,
+  }
+
+  legacy.eventSequence = 2
+  legacy.pendingDeliveries = [delivery, { ...delivery, chatId: '2', history }]
+
+  await fs.mkdir(path.join(directory, 'homes'))
+  await fs.writeFile(
+    path.join(directory, 'homes/1.json'),
+    JSON.stringify(legacy),
+  )
+
+  store = await openMonitorStore({ directory, homeIds: ['1'] })
+  assert.deepEqual(store.readHome('1'), { ...legacy, recentOutages: [] })
+
+  const outage = { restorationSequence: 2, startedAt, restoredAt }
+  const expected = await store.updateHome('1', record => ({
+    ...record,
+    eventSequence: 4,
+    recentOutages: [outage],
+    pendingDeliveries: [
+      delivery,
+      {
+        ...delivery,
+        chatId: '2',
+        history: { ...history, recentOutages: [outage] },
+      },
+    ],
+  }))
+
+  await store.close()
+  store = await openMonitorStore({ directory, homeIds: ['1'] })
+  assert.deepEqual(store.readHome('1'), expected)
+
+  for (const entries of [
+    Array(11).fill(outage),
+    [{ ...outage, startedAt: '2026-11-24T13:00:55+00:00' }],
+    [{ ...outage, startedAt: restoredAt }],
+    [outage, outage],
+    [outage, { ...outage, restorationSequence: 4 }],
+  ]) {
+    assert.throws(
+      () =>
+        monitorValidation.validateHomeRecord(
+          { ...expected, recentOutages: entries },
+          '1',
+        ),
+      /Invalid home record/,
+    )
+  }
+
+  expected.pendingDeliveries[1].history.recentOutages = [
+    { ...outage, restorationSequence: 4 },
+  ]
+  assert.throws(
+    () => monitorValidation.validateHomeRecord(expected, '1'),
+    /Invalid delivery record/,
+  )
+})

@@ -59,7 +59,24 @@ const stats = strictShape({
   outageCount: isNonnegativeInteger,
 })
 
-const homeRecord = strictShape({
+const outageRecord = strictShape({
+  restorationSequence: value => isNonnegativeInteger(value) && value >= 1,
+  startedAt: isUtcTimestamp,
+  restoredAt: isUtcTimestamp,
+})
+
+const recentOutages = value =>
+  Array.isArray(value) &&
+  value.length <= 10 &&
+  value.every(
+    (entry, index) =>
+      outageRecord(entry) &&
+      Date.parse(entry.startedAt) < Date.parse(entry.restoredAt) &&
+      (index === 0 ||
+        entry.restorationSequence < value[index - 1].restorationSequence),
+  )
+
+const homeFields = {
   version: isVersionOne,
   id: isHomeId,
   sample: nullable(sample),
@@ -75,7 +92,10 @@ const homeRecord = strictShape({
   eventSequence: isNonnegativeInteger,
   pendingDeliveries: value => Array.isArray(value) && value.length <= 1000,
   droppedAlerts: isNonnegativeInteger,
-})
+}
+
+const legacyHomeRecord = strictShape(homeFields)
+const homeRecord = strictShape({ ...homeFields, recentOutages })
 
 const deliveryFields = {
   eventId: isNonemptyString,
@@ -92,13 +112,21 @@ const deliveryFields = {
 
 const legacyDeliveryRecord = strictShape(deliveryFields)
 
+const historyFields = {
+  previousOnAt: isOptionalTimestamp,
+  previousOffAt: isOptionalTimestamp,
+  precedingStateMs: nullable(isNonnegativeInteger),
+}
+
 const deliveryRecord = strictShape({
   ...deliveryFields,
-  history: strictShape({
-    previousOnAt: isOptionalTimestamp,
-    previousOffAt: isOptionalTimestamp,
-    precedingStateMs: nullable(isNonnegativeInteger),
-  }),
+  history: strictShape(historyFields),
+})
+
+const recoveryDeliveryRecord = strictShape({
+  ...deliveryFields,
+  state: value => value === 'on',
+  history: strictShape({ ...historyFields, recentOutages }),
 })
 
 //
@@ -157,7 +185,11 @@ const chatRegistry = strictShape({
 //
 
 export const validateHomeRecord = (value, id) => {
-  if (!homeRecord(value) || value.id !== id) {
+  if (
+    !(homeRecord(value) || legacyHomeRecord(value)) ||
+    value.id !== id ||
+    value.recentOutages?.[0]?.restorationSequence > value.eventSequence
+  ) {
     throw new Error('Invalid home record')
   }
 
@@ -165,8 +197,14 @@ export const validateHomeRecord = (value, id) => {
 
   for (const delivery of value.pendingDeliveries) {
     if (
-      !(deliveryRecord(delivery) || legacyDeliveryRecord(delivery)) ||
+      !(
+        recoveryDeliveryRecord(delivery) ||
+        deliveryRecord(delivery) ||
+        legacyDeliveryRecord(delivery)
+      ) ||
       delivery.sequence > value.eventSequence ||
+      delivery.history?.recentOutages?.[0]?.restorationSequence >
+        delivery.sequence ||
       delivery.eventId !== `${id}:${delivery.sequence}`
     ) {
       throw new Error('Invalid delivery record')
@@ -181,7 +219,9 @@ export const validateHomeRecord = (value, id) => {
     identities.add(identity)
   }
 
-  return value
+  return Object.hasOwn(value, 'recentOutages')
+    ? value
+    : { ...value, recentOutages: [] }
 }
 
 export const validateChatRegistry = value => {
