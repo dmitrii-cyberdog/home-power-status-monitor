@@ -48,9 +48,10 @@ to cross-check the device identity. The supported EZVIZ base URL is
   interval for the home's existing subscribers. Use whole minutes. Omit it or
   set it to `0` for no default updates. Each chat can set its own interval with
   `/notification_interval`; admins can set one for a group with
-  `/group_interval`. The first update is due one interval after the notification
-  worker starts, the chat subscribes or its interval changes, and uses cached
-  status.
+  `/group_interval`. The first update is due one interval after the latest
+  confirmed power state began, and later updates follow the same schedule. After
+  a restart, subscription, or interval change, the chat joins at the next
+  scheduled update. Updates use cached status.
 - `HOME_<id>_NOTIFICATION_INTERVAL_MODE` filters recurring updates for that
   home, including chats with an interval override. Use `1` for power on only,
   `2` for power off only, or `3` for all statuses (default, including unknown).

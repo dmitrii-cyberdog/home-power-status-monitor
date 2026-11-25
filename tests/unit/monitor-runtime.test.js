@@ -164,6 +164,14 @@ test('recurring status follows each home cadence and uses authorized cached stat
     monitor: {
       async check() {
         polls++
+
+        return {
+          homes: homes.map(({ id }) => ({
+            id,
+            status: 'on',
+            observedAt: new Date(now).toISOString(),
+          })),
+        }
       },
     },
   })
@@ -187,10 +195,12 @@ test('recurring status follows each home cadence and uses authorized cached stat
     async sendMessage(chatId, text, options) {
       assert.equal(chatId, '7')
       assert.deepEqual(options, { parse_mode: 'HTML' })
-      assert.match(text, /unknown/i)
+      assert.match(text, /Power on/)
       sent.push(text.match(/<b>([^<]+)<\/b>/)[1])
     },
   })
+
+  await runtime.homeMonitor.check()
 
   runtime.startNotifications()
 
@@ -212,5 +222,5 @@ test('recurring status follows each home cadence and uses authorized cached stat
   await runtime.access.setSubscription('7', '1', false)
   await tick(2)
   assert.deepEqual(sent, ['Two', 'Two', 'Five'])
-  assert.equal(polls, 0)
+  assert.equal(polls, 1)
 })

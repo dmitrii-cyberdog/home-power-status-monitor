@@ -27,10 +27,11 @@ outage.
    Set `HOME_<id>_NOTIFICATION_MODE` to `1` for restoration alerts only, `2` for
    outage alerts only, or `3` for both (default).
    `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` sets the recurring status interval
-   in minutes. The default `0` disables recurring updates for chats without an
-   interval override. Set `HOME_<id>_NOTIFICATION_INTERVAL_MODE` to `1` for
-   power-on updates only, `2` for power-off updates only, or `3` for all
-   statuses (default, including unknown).
+   in minutes from the latest detected outage or restoration. The default `0`
+   disables recurring updates for chats without an interval override. Set
+   `HOME_<id>_NOTIFICATION_INTERVAL_MODE` to `1` for power-on updates only, `2`
+   for power-off updates only, or `3` for all statuses (default, including
+   unknown).
 
 3. Start the worker from the repository root.
 

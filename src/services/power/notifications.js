@@ -42,7 +42,21 @@ export const createPowerNotifications = ({
     const time = now()
 
     for (const home of homes) {
-      for (const recipient of access.recipients(home.id, registry)) {
+      const recipients = access.recipients(home.id, registry)
+
+      if (!recipients.length) {
+        continue
+      }
+
+      const { stateSince, lastDecisiveStatus } = store.readHome(home.id)
+
+      if (stateSince === null) {
+        continue
+      }
+
+      const stateStartedAt = Date.parse(stateSince)
+
+      for (const recipient of recipients) {
         const minutes = access.getIntervalMinutes(
           recipient.chatId,
           home.id,
@@ -57,19 +71,36 @@ export const createPowerNotifications = ({
 
         const intervalMs = minutes * 60000
 
+        const elapsedIntervals = Math.max(
+          0,
+          Math.floor((time - stateStartedAt) / intervalMs),
+        )
+
         seen.add(key)
 
-        let cadence = statusCadences.get(key)
+        const cadence = statusCadences.get(key)
 
-        if (cadence?.intervalMs !== intervalMs) {
-          cadence = { intervalMs, anchor: time }
-          statusCadences.set(key, cadence)
+        if (!cadence || cadence.intervalMs !== intervalMs) {
+          statusCadences.set(key, {
+            intervalMs,
+            stateSince,
+            state: lastDecisiveStatus,
+            elapsedIntervals,
+          })
+          continue
         }
 
-        const elapsed = time - cadence.anchor
+        if (
+          cadence.stateSince !== stateSince ||
+          cadence.state !== lastDecisiveStatus
+        ) {
+          cadence.stateSince = stateSince
+          cadence.state = lastDecisiveStatus
+          cadence.elapsedIntervals = 0
+        }
 
-        if (elapsed >= intervalMs) {
-          cadence.anchor = time - (elapsed % intervalMs)
+        if (elapsedIntervals > cadence.elapsedIntervals) {
+          cadence.elapsedIntervals = elapsedIntervals
 
           if (!due.has(home.id)) {
             due.set(home.id, [])

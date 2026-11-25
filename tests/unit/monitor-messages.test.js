@@ -408,11 +408,8 @@ test('transition alerts show localized episode history and omit unsupported dura
     precedingStateMs: 9000000,
   })
 
-  assert.match(outage, /Observed time with power: 2 hours 30 minutes/)
-  assert.match(
-    outage,
-    /📅 Previous outage detected at: 20\.11\.2026 10:00:00 \(local time\)/,
-  )
+  assert.match(outage, /⏱ With power: 2 hours 30 minutes/)
+  assert.match(outage, /📅 Detected at: 20\.11\.2026 10:00:00 \(local time\)/)
   assert.match(outage, /Previous outage was: 4 hours ago/)
 
   const localizedOutage = render(

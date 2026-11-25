@@ -26,6 +26,8 @@ const fixture = async t => {
   })
 
   await store.updateHome('1', record => {
+    record.lastDecisiveStatus = 'on'
+    record.stateSince = new Date(0).toISOString()
     record.eventSequence = 2
     record.pendingDeliveries = [1, 2].flatMap(sequence =>
       ['1', '2'].map(chatId => ({
@@ -140,8 +142,8 @@ for (const [notificationMode, expected] of [
 
 for (const [notificationIntervalMode, expected] of [
   [1, ['on', 'on']],
-  [2, ['off', 'off']],
-  [3, ['on', 'on', 'off', 'off', 'unknown']],
+  [2, ['off']],
+  [3, ['on', 'on', 'off', 'unknown']],
 ]) {
   test(`interval mode ${notificationIntervalMode} filters repeated status independently of alerts`, async t => {
     const store = await fixture(t)
@@ -177,8 +179,18 @@ for (const [notificationIntervalMode, expected] of [
     await dispatcher.flush()
 
     for (const state of ['on', 'on', 'off', 'off', 'unknown']) {
-      status = state
       now += 60000
+
+      if (state !== 'unknown' && state !== status) {
+        await store.updateHome('1', record => {
+          record.lastDecisiveStatus = state
+          record.stateSince = new Date(now).toISOString()
+
+          return record
+        })
+      }
+
+      status = state
 
       await dispatcher.flush({ includeAlerts: false })
     }
@@ -506,6 +518,8 @@ const runtimeFixture = async (
   const [recipient] = access.recipients('1', store.readChats())
 
   await store.updateHome('1', record => {
+    record.lastDecisiveStatus = 'off'
+    record.stateSince = new Date(0).toISOString()
     record.eventSequence = 1
     record.pendingDeliveries = [
       {
@@ -789,7 +803,7 @@ test('each chat follows its own recurring interval', async t => {
   assert.equal(periodicSends(sent, 8), 1)
 })
 
-test('changing an interval restarts that chat cadence', async t => {
+test('changing an interval keeps the schedule anchored to the home state', async t => {
   t.mock.timers.enable({ apis: ['setInterval'] })
 
   const clock = { now: 0 }
@@ -809,14 +823,81 @@ test('changing an interval restarts that chat cadence', async t => {
 
   await access.setInterval('7', '1', 5)
 
-  // The first pass after the change re-anchors the cadence.
-  await advanceMinutes(t, 5, clock, runtime)
+  await advanceMinutes(t, 3, clock, runtime)
 
   assert.equal(periodicSends(sent, 7), 1)
 
   await advanceMinutes(t, 1, clock, runtime)
 
   assert.equal(periodicSends(sent, 7), 2)
+})
+
+test('reminders follow the saved state across restoration and worker restart', async t => {
+  const store = await fixture(t)
+  const sent = []
+
+  const minute = 60000
+
+  let now = 0
+
+  const createDispatcher = () =>
+    createPowerNotifications({
+      store,
+      homes: [{ id: '1' }],
+      access: {
+        recipients: () => [{ chatId: '1' }],
+        getIntervalMinutes: () => 1440,
+        isDeliveryAllowed: () => true,
+        getLocale: () => 'en',
+      },
+      now: () => now,
+      getStatuses: () => [
+        { id: '1', status: store.readHome('1').lastDecisiveStatus },
+      ],
+      renderStatus: status => [status.status],
+      send: async (_chatId, body) => sent.push(body),
+    })
+
+  let dispatcher = createDispatcher()
+
+  const flushAt = async minutes => {
+    now = minutes * minute
+
+    await dispatcher.flush({ includeAlerts: false })
+  }
+
+  const changeState = (state, minutes) =>
+    store.updateHome('1', record => {
+      record.lastDecisiveStatus = state
+      record.stateSince = new Date(minutes * minute).toISOString()
+
+      return record
+    })
+
+  await flushAt(0)
+  await changeState('off', 1309)
+  await flushAt(1309)
+  await flushAt(1440)
+  assert.deepEqual(sent, [])
+
+  await flushAt(2749)
+  assert.deepEqual(sent, ['off'])
+
+  dispatcher = createDispatcher()
+
+  await flushAt(2750)
+  assert.deepEqual(sent, ['off'])
+
+  await flushAt(4189)
+  assert.deepEqual(sent, ['off', 'off'])
+
+  await changeState('on', 4190)
+  await flushAt(4190)
+  await flushAt(5629)
+  assert.deepEqual(sent, ['off', 'off'])
+
+  await flushAt(5630)
+  assert.deepEqual(sent, ['off', 'off', 'on'])
 })
 
 test('interval zero stops recurring updates but keeps alerts', async t => {

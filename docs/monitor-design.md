@@ -196,12 +196,14 @@ home’s configured zone, including device observation times in `/status_full`.
 The notification worker sends the brief cached status to current subscribers on
 each subscriber's effective interval: the chat override, else the
 `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` home default. An omitted or zero home
-default disables updates only for chats without an override. The first update is
-due one interval after startup, subscribing or an interval change, and the
-schedule resets on restart. It checks for due updates at least once per minute
-while idle, coalesces missed intervals, and skips a failed update until the next
-scheduled one after the Telegram transport's own retries. It uses the same
-subscription and locale guards as transition alerts.
+default disables updates only for chats without an override. The schedule starts
+at the saved UTC detection time of the current power state, including the first
+confirmed reading. Each confirmed state change starts a new schedule. Unknown
+readings retain the latest confirmed start time. It checks for due updates at
+least once per minute while idle, coalesces missed intervals while running, and
+skips a failed update until the next scheduled one after the Telegram
+transport's own retries. It uses the same subscription and locale guards as
+transition alerts.
 
 `HOME_<id>_NOTIFICATION_INTERVAL_MODE` filters the cached status at each due
 interval. Mode `1` sends only when power is on, `2` only when power is off, and
@@ -217,9 +219,10 @@ minutes from 5 to 10080, or `0` to turn recurring updates off for that chat; the
 override so it follows `HOME_<id>_NOTIFICATION_INTERVAL_MINUTES` again. The home
 name can be omitted when only one home is configured. Overrides are stored as
 optional `intervals` on the chat record and survive notification on/off. The
-effective interval is the chat override, else the home default. Cadence is kept
-in memory per chat and home; a changed effective interval restarts that chat's
-cadence from the current time.
+effective interval is the chat override, else the home default. The worker
+tracks handled intervals in memory per chat and home. On restart, subscription,
+or effective interval change, the chat joins the schedule at the next interval
+boundary measured from the saved detection time.
 
 Delivery is at least once while pending: a crash after send and before saved ack
 can duplicate an event with the same event ID. Temporary failures retry on later
