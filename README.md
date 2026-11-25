@@ -40,8 +40,9 @@ outage.
    ```
 
 4. In a private chat with the bot, send `/secret <value>` using your access
-   secret. Send `/status` for a summary, `/status_full` for detailed history,
-   and `/on_notification <home name>` to subscribe.
+   secret. Send `/status` for a summary, `/status_full` for detailed status,
+   `/statistic [home name]` for outage averages and history, or
+   `/on_notification <home name>` to subscribe.
 
 ## Documentation
 

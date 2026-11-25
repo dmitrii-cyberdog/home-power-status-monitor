@@ -223,6 +223,7 @@ export const projectHomeStatus = (
     lastInferredAt: record.lastDecisiveAt,
     lastOn: record.lastOn,
     lastOff: record.lastOff,
+    recentOutages: record.recentOutages,
     stateSince: record.stateSince,
     durationMs:
       uncertain || !record.stateSince

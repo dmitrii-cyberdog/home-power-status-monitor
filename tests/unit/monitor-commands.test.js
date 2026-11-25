@@ -166,6 +166,51 @@ const notificationFixture = async (
   return { access, store, homes, chat, replies, send, click }
 }
 
+test('statistic shows saved outage history for one or all homes without polling', async t => {
+  const { access, homes, chat, replies, send } = await notificationFixture(t, {
+    check: async () => assert.fail('Statistics must not poll'),
+  })
+
+  homes[0].timeZone = 'GMT+2'
+  homes[0].recentOutages = Array.from({ length: 10 }, (_, index) => ({
+    restorationSequence: 20 - index * 2,
+    startedAt: `2026-11-${20 - index}T13:00:55.000Z`,
+    restoredAt: `2026-11-${20 - index}T21:00:55.000Z`,
+  }))
+  homes.push({ id: '2', name: 'Second <Home>', recentOutages: [] })
+
+  await send('/statistic@power_test_bot Family Home')
+  assert.equal(replies.length, 1)
+  assert.doesNotMatch(
+    replies.at(-1).payload.text,
+    /Family Home|Outage statistics/,
+  )
+
+  await access.authorize(String(chat.id), 'test-only', 'en')
+  await send('/statistic@power_test_bot fAmIlY Home')
+
+  const named = replies.at(-1).payload
+  const text = named.text.replace(/[\u2068\u2069]/g, '')
+
+  assert.equal(named.parse_mode, 'HTML')
+  assert.match(text, /Outage statistics \(10 outages\)/)
+  assert.match(text, /Average downtime 8 hours/)
+  assert.match(text, /❌ 20\.11 15:00:55 - ✅ 20\.11 23:00:55/)
+  assert.equal(text.match(/❌/g).length, 10)
+  assert.doesNotMatch(text, /Second/)
+
+  await send('/statistic@power_test_bot')
+  assert.match(replies.at(-1).payload.text, /Second &lt;Home&gt;/)
+  assert.match(replies.at(-1).payload.text, /No measured outages yet/)
+
+  await send('/statistic@power_test_bot Missing')
+  assert.match(replies.at(-1).payload.text, /Home not found/)
+
+  await access.setLocale(String(chat.id), 'ru')
+  await send('/statistic@power_test_bot Family Home')
+  assert.match(replies.at(-1).payload.text, /Статистика отключений/)
+})
+
 test('replying to a notification prompt saves the setting and confirms it', async t => {
   const { access, store, homes, chat, replies, send } =
     await notificationFixture(t)

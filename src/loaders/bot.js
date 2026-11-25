@@ -100,6 +100,7 @@ export default async (signal, monitorRuntime) => {
     { command: 'secret', description: 'Authorize this chat' },
     { command: 'status', description: 'Show home status' },
     { command: 'status_full', description: 'Show detailed home status' },
+    { command: 'statistic', description: 'Show saved outage statistics' },
     { command: 'on_notification', description: 'Enable home notifications' },
     { command: 'off_notification', description: 'Disable home notifications' },
     {

@@ -4,6 +4,7 @@ help =
 
     ⚡ /status [home name] — brief power status
     📊 /status_full [home name] — detailed status and history
+    📈 /statistic [home name] — outage averages and recent outages
     🔔 /on_notification &lt;home name&gt; — enable notifications
     🔕 /off_notification &lt;home name&gt; — disable notifications
     ⏱ /notification_interval &lt;minutes|default|0&gt; [home name] — set recurring status interval
@@ -116,6 +117,7 @@ monitor_recovery_average_start = Average outage start { $time }
 monitor_recovery_average_restore = Average restoration { $time }
 monitor_recovery_no_clear_average = No clear average
 monitor_recovery_previous_outages = Previous outages
+monitor_no_measured_outages = No measured outages yet.
 monitor_restored_off_at = Power went off at
 monitor_observed_uptime = With power
 monitor_restored_downtime = Power was out for

@@ -112,6 +112,10 @@ streaks and diagnostic codes. Device details are transient and do not change the
 stored record schema. Both replies use escaped Telegram HTML, bold headings,
 italic notes, spacing and dividers. Each split message has complete markup.
 
+`/statistic [home name]` reads saved outage history without polling. It uses the
+same chat authorization and home-name matching. With no name it shows every
+configured home. Each report includes the averages and up to ten saved outages.
+
 Scheduled ticks and both status commands share one cadence. The minimum interval
 is `max(60, POWER_CHECK_INTERVAL_SECONDS)` seconds. A request first joins any
 in-flight round. The first check in a process polls even when a persisted

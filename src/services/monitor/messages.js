@@ -268,10 +268,10 @@ export const renderFullStatusMessages = (statuses, t) =>
 //
 //
 
-const recoveryStatisticsLines = (delivery, timeZone, t) => {
+const statisticsLines = (recentOutages, timeZone, t, restorationSequence) => {
   const summary = powerHistory.summarizeRecentOutages(
-    delivery.history?.recentOutages ?? [],
-    delivery.sequence,
+    recentOutages,
+    restorationSequence,
   )
 
   if (!summary) {
@@ -303,10 +303,13 @@ const recoveryStatisticsLines = (delivery, timeZone, t) => {
     ],
   ]
 
-  if (summary.previousOutages.length) {
+  const outages =
+    restorationSequence === undefined ? recentOutages : summary.previousOutages
+
+  if (outages.length) {
     lines.push([''], [t('monitor_recovery_previous_outages'), 'b'])
 
-    for (const { startedAt, restoredAt } of summary.previousOutages) {
+    for (const { startedAt, restoredAt } of outages) {
       const start = homeDate(startedAt, timeZone).format('DD.MM HH:mm:ss')
       const end = homeDate(restoredAt, timeZone).format('DD.MM HH:mm:ss')
       const elapsed = Date.parse(restoredAt) - Date.parse(startedAt)
@@ -319,6 +322,18 @@ const recoveryStatisticsLines = (delivery, timeZone, t) => {
 
   return lines
 }
+
+export const renderStatisticMessages = (homes, t) =>
+  homeLines(homes, t, (home, translate) => {
+    const lines = statisticsLines(home.recentOutages, home.timeZone, translate)
+
+    return [
+      [home.name, 'b'],
+      ...(lines.length
+        ? lines
+        : [[''], [translate('monitor_no_measured_outages'), 'i']]),
+    ]
+  })
 
 export const renderPowerAlert = (delivery, home, t) => {
   const outage = delivery.state === 'off'
@@ -387,7 +402,14 @@ export const renderPowerAlert = (delivery, home, t) => {
   }
 
   if (!outage) {
-    lines.push(...recoveryStatisticsLines(delivery, home.timeZone, t))
+    lines.push(
+      ...statisticsLines(
+        delivery.history?.recentOutages ?? [],
+        home.timeZone,
+        t,
+        delivery.sequence,
+      ),
+    )
   }
 
   return messageChunks.chunkHtmlLines(lines, messageLimit)

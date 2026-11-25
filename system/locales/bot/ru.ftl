@@ -4,6 +4,7 @@ help =
 
     ⚡ /status [название дома] — краткая сводка об электричестве
     📊 /status_full [название дома] — подробная сводка и история
+    📈 /statistic [название дома] — статистика и история отключений
     🔔 /on_notification &lt;название дома&gt; — включить уведомления
     🔕 /off_notification &lt;название дома&gt; — выключить уведомления
     ⏱ /notification_interval &lt;минуты|default|0&gt; [название дома] — задать интервал регулярных сводок
@@ -118,6 +119,7 @@ monitor_recovery_average_start = Среднее время отключения 
 monitor_recovery_average_restore = Среднее время восстановления { $time }
 monitor_recovery_no_clear_average = Нет выраженного среднего
 monitor_recovery_previous_outages = Предыдущие отключения
+monitor_no_measured_outages = Измеренных отключений пока нет.
 monitor_restored_off_at = Было отключено в
 monitor_observed_uptime = Время с электричеством
 monitor_restored_downtime = Электричество отсутствовало

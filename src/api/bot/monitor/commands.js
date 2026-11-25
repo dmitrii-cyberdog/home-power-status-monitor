@@ -15,9 +15,14 @@ import {
 import { parseIntervalArguments } from './intervalArguments'
 
 const notificationCommands = ['on_notification', 'off_notification']
+const homeReports = {
+  status: monitorMessages.renderStatusMessages,
+  status_full: monitorMessages.renderFullStatusMessages,
+  statistic: monitorMessages.renderStatisticMessages,
+}
+
 const monitorCommands = [
-  'status',
-  'status_full',
+  ...Object.keys(homeReports),
   'notification_interval',
   ...notificationCommands,
 ]
@@ -235,13 +240,13 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
 
     const command = replyCommand ?? ctx.message.text.split(/[\s@]/)[0].slice(1)
 
-    const isStatus = command === 'status' || command === 'status_full'
+    const render = homeReports[command]
 
     const argument = (replyCommand ? ctx.message.text : ctx.match)
       .trim()
       .toLowerCase()
 
-    if (!isStatus && !argument) {
+    if (!render && !argument) {
       await replyFormatted(ctx, ctx.t(`subscription_prompt_${command}`), 'i', {
         reply_markup: { force_reply: true, selective: true },
         reply_parameters: { message_id: ctx.message.message_id },
@@ -250,10 +255,15 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       return
     }
 
+    const savedStatuses =
+      argument || command === 'statistic'
+        ? homeMonitor.getStatuses()
+        : undefined
+
     const home = argument
-      ? homeMonitor
-          .getStatuses()
-          .find(candidate => candidate.name.toLowerCase() === argument)
+      ? savedStatuses.find(
+          candidate => candidate.name.toLowerCase() === argument,
+        )
       : undefined
 
     if (argument && !home) {
@@ -262,7 +272,7 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
       return
     }
 
-    if (isStatus) {
+    if (render) {
       const chatId = String(ctx.chat.id)
 
       const grant = access.captureGrant(chatId)
@@ -273,17 +283,13 @@ export const createMonitorCommands = ({ access, homeMonitor }) => {
         return
       }
 
-      const updatedStatuses = await homeMonitor.check()
-
-      const render =
-        command === 'status_full'
-          ? monitorMessages.renderFullStatusMessages
-          : monitorMessages.renderStatusMessages
+      const statuses =
+        command === 'statistic' ? savedStatuses : await homeMonitor.check()
 
       const messages = render(
         argument
-          ? updatedStatuses.filter(updated => updated.id === home.id)
-          : updatedStatuses,
+          ? statuses.filter(updated => updated.id === home.id)
+          : statuses,
         ctx.t.bind(ctx),
       )
 
