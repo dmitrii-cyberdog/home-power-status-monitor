@@ -309,10 +309,6 @@ export const renderPowerAlert = (delivery, home, t) => {
   }
 
   if (outage && previousOffAt) {
-    lines.push([
-      `📅 ${t('monitor_previous_outage')}: ${homeTimestamp(previousOffAt, t, home.timeZone, notificationFormat)}`,
-    ])
-
     const elapsed = Date.parse(delivery.detectedAt) - Date.parse(previousOffAt)
 
     if (elapsed >= 0) {
@@ -322,6 +318,10 @@ export const renderPowerAlert = (delivery, home, t) => {
         `↔️ ${t('monitor_between_outages', { duration: sincePreviousOutage })}`,
       ])
     }
+
+    lines.push([
+      `📅 ${t('monitor_previous_outage')}: ${homeTimestamp(previousOffAt, t, home.timeZone, notificationFormat)}`,
+    ])
   }
 
   if (delivery.uncertain) {
