@@ -41,6 +41,8 @@ const translate = locale => {
     i18n.t(locale, key, variables).replace(/[\u2068\u2069]/g, '')
 }
 
+const literal = text => new RegExp(RegExp.escape(text))
+
 test('recovery alerts show localized averages and earlier outages in home time', () => {
   const recentOutages = [
     {
@@ -65,37 +67,86 @@ test('recovery alerts show localized averages and earlier outages in home time',
   const render = (locale, event = delivery, destination = target) =>
     messages.renderPowerAlert(event, destination, translate(locale))
 
+  const en = translate('en')
+  const ru = translate('ru')
+
   const english = render('en').join('\n')
-  assert.match(english, /Outage statistics \(2 outages\)/)
-  assert.match(english, /Average downtime 3 hours/)
-  assert.match(english, /Average outage start 05:30/)
-  assert.match(english, /Average restoration 08:30/)
-  assert.match(english, /❌ 23\.11 05:20:00 - ✅ 23\.11 07:20:00 \(2 hours\)/)
+  assert.match(
+    english,
+    literal(en('monitor_recovery_outage_sample', { count: 2 })),
+  )
+  assert.match(
+    english,
+    literal(
+      en('monitor_recovery_average_downtime', {
+        duration: en('monitor_hours', { count: 3 }),
+      }),
+    ),
+  )
+  assert.match(
+    english,
+    literal(en('monitor_recovery_average_start', { time: '05:30' })),
+  )
+  assert.match(
+    english,
+    literal(en('monitor_recovery_average_restore', { time: '08:30' })),
+  )
+  assert.match(
+    english,
+    literal(
+      `❌ 23.11 05:20:00 - ✅ 23.11 07:20:00 (${en('monitor_hours', { count: 2 })})`,
+    ),
+  )
   assert.doesNotMatch(english, /❌ 24\.11 05:40:00/)
 
   const russian = render('ru').join('\n')
-  assert.match(russian, /Средняя длительность отключения 3 часа/)
-  assert.match(russian, /❌ 23\.11 05:20:00 - ✅ 23\.11 07:20:00 \(2 часа\)/)
+  assert.match(
+    russian,
+    literal(
+      ru('monitor_recovery_average_downtime', {
+        duration: ru('monitor_hours', { count: 3 }),
+      }),
+    ),
+  )
+  assert.match(
+    russian,
+    literal(
+      `❌ 23.11 05:20:00 - ✅ 23.11 07:20:00 (${ru('monitor_hours', { count: 2 })})`,
+    ),
+  )
 
   const oneOutage = render('en', {
     ...delivery,
     history: { recentOutages: recentOutages.slice(0, 1) },
   }).join('\n')
-  assert.match(oneOutage, /Outage statistics \(1 outage\)/)
-  assert.doesNotMatch(oneOutage, /Previous outages/)
+  assert.match(
+    oneOutage,
+    literal(en('monitor_recovery_outage_sample', { count: 1 })),
+  )
+  assert.doesNotMatch(
+    oneOutage,
+    literal(en('monitor_recovery_previous_outages')),
+  )
 
   for (const event of [
     { ...delivery, state: 'off' },
     { ...delivery, history: {} },
     { ...delivery, history: { recentOutages: [] } },
   ]) {
-    assert.doesNotMatch(render('en', event).join('\n'), /Outage statistics/)
+    const title = en('monitor_recovery_outage_sample', {
+      count: event.history.recentOutages?.length ?? 0,
+    })
+
+    assert.doesNotMatch(render('en', event).join('\n'), literal(title))
   }
 
   const chunks = render('en', delivery, { ...target, name: '<&'.repeat(1500) })
   assert.ok(chunks.length > 1)
   assert.match(chunks.join('\n'), /&lt;&amp;/)
-  assert.match(chunks.join('\n'), /Previous outages/)
+  assert.match(
+    chunks.join('\n'),
+    literal(en('monitor_recovery_previous_outages')),
+  )
 })
 
 test('power alerts display the localized state, home and timestamp on separate lines', () => {
@@ -107,26 +158,30 @@ test('power alerts display the localized state, home and timestamp on separate l
     uncertain: false,
   }
 
-  for (const [locale, state, heading, localTime] of [
-    ['en', 'off', '⚡ ❌ Power outage detected', 'local time'],
-    ['en', 'on', '⚡ ✅ Power restored', 'local time'],
-    ['ru', 'off', '⚡ ❌ Обнаружено отключение электричества', 'местн. вр.'],
-    ['ru', 'on', '⚡ ✅ Электричество восстановлено', 'местн. вр.'],
+  for (const [locale, state, icon, key] of [
+    ['en', 'off', '❌', 'monitor_outage'],
+    ['en', 'on', '✅', 'monitor_restored'],
+    ['ru', 'off', '❌', 'monitor_outage'],
+    ['ru', 'on', '✅', 'monitor_restored'],
   ]) {
+    const t = translate(locale)
+
     assert.deepEqual(
       messages.renderPowerAlert(
         { ...delivery, state },
         home({ name: 'Home & Co' }),
-        translate(locale),
+        t,
       ),
       [
-        `<b>${heading}</b>\n\n<b>🏠 Home &amp; Co</b>\n🕒 06.03.2026 04:05:09 (${localTime})`,
+        `<b>⚡ ${icon} ${t(key)}</b>\n\n<b>🏠 Home &amp; Co</b>\n🕒 06.03.2026 04:05:09 (${t('monitor_local_time')})`,
       ],
     )
   }
 })
 
 test('outage alerts retain baseline and uncertainty details when applicable', () => {
+  const t = translate('en')
+
   const [text] = messages.renderPowerAlert(
     {
       state: 'off',
@@ -135,11 +190,11 @@ test('outage alerts retain baseline and uncertainty details when applicable', ()
       uncertain: true,
     },
     home(),
-    translate('en'),
+    t,
   )
 
-  assert.match(text, /\(Initial baseline; actual start unknown\)/)
-  assert.match(text, /\n\n<i>⚠️ Uncertain continuity<\/i>$/)
+  assert.match(text, literal(`(${t('monitor_baseline')})`))
+  assert.ok(text.endsWith(`\n\n<i>⚠️ ${t('monitor_uncertain')}</i>`), text)
 })
 
 test('brief status separates each heading and marks the current power state', () => {
@@ -153,17 +208,22 @@ test('brief status separates each heading and marks the current power state', ()
 
   const [brief] = renderStatusMessages(homes, t)
 
-  assert.match(brief, /<b>North<\/b>\n\n<b>⚡ Power on ✅/)
-  assert.match(brief, /────────\n\n<b>South<\/b>\n\n<b>⚡ Power off ❌/)
+  assert.match(brief, literal(`<b>North</b>\n\n<b>⚡ ${t('monitor_on')} ✅`))
   assert.match(
     brief,
-    /────────\n\n<b>West<\/b>\n\n<b>⚡ Power status unknown ❓/,
+    literal(`────────\n\n<b>South</b>\n\n<b>⚡ ${t('monitor_off')} ❌`),
+  )
+  assert.match(
+    brief,
+    literal(
+      `────────\n\n<b>West</b>\n\n<b>⚡ ${t('monitor_status_unknown')} ❓`,
+    ),
   )
 
   const [full] = messages.renderFullStatusMessages(homes, t)
 
-  assert.match(full, /<b>North<\/b>\n\n<b>⚡ Power on ✅/)
-  assert.match(full, /<b>📊 Cumulative sampled estimates<\/b>/)
+  assert.match(full, literal(`<b>North</b>\n\n<b>⚡ ${t('monitor_on')} ✅`))
+  assert.match(full, literal(`<b>📊 ${t('monitor_totals')}</b>`))
 })
 
 test('brief status shows only current state, duration and opposite detection', () => {
@@ -172,25 +232,42 @@ test('brief status shows only current state, duration and opposite detection', (
     '\n',
   )
 
-  assert.match(on, /⏱ For 2 days 3 hours/)
-  assert.match(on, /since detection/)
-  assert.doesNotMatch(on, /Before that|Not observed/)
-  assert.doesNotMatch(on, /Cumulative|outages|Last observation|auth_failed/)
+  const elapsed = `${t('monitor_days', { count: 2 })} ${t('monitor_hours', { count: 3 })}`
+
+  assert.match(
+    on,
+    literal(`⏱ ${t('monitor_power_for', { duration: elapsed })}`),
+  )
+  assert.doesNotMatch(on, /auth_failed/)
+
+  for (const key of [
+    'monitor_before_off',
+    'monitor_not_observed',
+    'monitor_totals',
+    'monitor_outages',
+    'monitor_observed',
+  ]) {
+    assert.doesNotMatch(on, literal(t(key)))
+  }
 
   const off = renderStatusMessages([home({ status: 'off' })], t).join('\n')
 
-  assert.match(off, /⏱ For 1 minute/)
   assert.match(
     off,
-    /✅ Before that, power came on at 01\.01\.1970 00:00 \(local time\)/,
+    literal(
+      `⏱ ${t('monitor_power_for', { duration: t('monitor_minutes', { count: 1 }) })}`,
+    ),
+  )
+  assert.match(
+    off,
+    literal(
+      `✅ ${t('monitor_before_on')} 01.01.1970 00:00 (${t('monitor_local_time')})`,
+    ),
   )
 })
 
 test('brief status omits the previous-change line when the opposite state was never observed', () => {
-  for (const [locale, before, missing] of [
-    ['en', /Before that/, /Not observed/],
-    ['ru', /До этого/, /Нет наблюдений/],
-  ]) {
+  for (const locale of ['en', 'ru']) {
     const t = translate(locale)
 
     const on = renderStatusMessages([home()], t).join('\n')
@@ -201,24 +278,29 @@ test('brief status omits the previous-change line when the opposite state was ne
     ).join('\n')
 
     for (const text of [on, off]) {
-      assert.doesNotMatch(text, before)
-      assert.doesNotMatch(text, missing)
+      assert.doesNotMatch(text, literal(t('monitor_before_on')))
+      assert.doesNotMatch(text, literal(t('monitor_before_off')))
+      assert.doesNotMatch(text, literal(t('monitor_not_observed')))
     }
   }
 })
 
 test('brief duration boundaries use readable localized units', () => {
-  for (const [locale, expected] of [
-    ['en', ['less than a minute', '1 minute', '1 hour', '1 day']],
-    ['ru', ['меньше минуты', '1 минуту', '1 час', '1 день']],
-  ]) {
-    for (const [index, durationMs] of [0, 60000, 3600000, 86400000].entries()) {
-      const result = renderStatusMessages(
-        [home({ durationMs })],
-        translate(locale),
-      ).join('')
+  for (const locale of ['en', 'ru']) {
+    const t = translate(locale)
 
-      assert.ok(result.includes(expected[index]), result)
+    for (const [durationMs, expected] of [
+      [0, t('monitor_less_minute')],
+      [60000, t('monitor_minutes', { count: 1 })],
+      [3600000, t('monitor_hours', { count: 1 })],
+      [86400000, t('monitor_days', { count: 1 })],
+    ]) {
+      const result = renderStatusMessages([home({ durationMs })], t).join('')
+
+      assert.match(
+        result,
+        literal(t('monitor_power_for', { duration: expected })),
+      )
       assert.doesNotMatch(result, /monitor_/)
     }
   }
@@ -238,8 +320,8 @@ test('unknown and interrupted status never claim a continuous duration', () => {
     assert.match(
       result,
       patch.status === 'unknown'
-        ? /Power status unknown/
-        : /Continuous duration unknown/,
+        ? literal(t('monitor_status_unknown'))
+        : literal(t('monitor_continuity_unknown')),
     )
   }
 })
@@ -248,31 +330,21 @@ test('full status formats diagnostics and escapes every dynamic field', () => {
   assert.equal(typeof messages.renderFullStatusMessages, 'function')
 
   for (const locale of ['en', 'ru']) {
+    const t = translate(locale)
+
     const result = messages
-      .renderFullStatusMessages(
-        [home({ name: '<b>Home & Co</b>' })],
-        translate(locale),
-      )
+      .renderFullStatusMessages([home({ name: '<b>Home & Co</b>' })], t)
       .join('\n')
 
     assert.match(result, /<b>&lt;b&gt;Home &amp; Co&lt;\/b&gt;<\/b>/)
     assert.match(result, /<i>/)
     assert.match(result, /auth_failed/)
-    assert.ok(
-      result.includes(
-        locale === 'en'
-          ? 'Time with unknown power status'
-          : 'Время с неизвестным состоянием электроснабжения',
-      ),
+    assert.match(result, literal(t('monitor_unknown_time')))
+    assert.match(result, literal(t('monitor_tail')))
+    assert.match(
+      result,
+      literal(`01.01.1970 00:00 (${t('monitor_local_time')})`),
     )
-    assert.ok(
-      result.includes(
-        locale === 'en'
-          ? 'Time since the end of the measured period'
-          : 'Время с конца учтённого периода',
-      ),
-    )
-    assert.match(result, /01\.01\.1970 00:00 \((local time|местн\. вр\.)\)/)
     assert.doesNotMatch(result, /monitor_/)
   }
 })
@@ -285,16 +357,15 @@ test('full status leaves the unmeasured time unknown before the first sample', (
     stateSince: null,
   })
 
-  for (const [locale, expected] of [
-    ['en', 'Time since the end of the measured period: Not observed'],
-    ['ru', 'Время с конца учтённого периода: Нет наблюдений'],
-  ]) {
-    const [message] = messages.renderFullStatusMessages(
-      [status],
-      translate(locale),
-    )
+  for (const locale of ['en', 'ru']) {
+    const t = translate(locale)
 
-    assert.ok(message.includes(expected))
+    const [message] = messages.renderFullStatusMessages([status], t)
+
+    assert.match(
+      message,
+      literal(`${t('monitor_tail')}: ${t('monitor_not_observed')}`),
+    )
   }
 })
 
@@ -336,13 +407,12 @@ test('both status renderers split long escaped names into complete HTML messages
 })
 
 test('a header exactly at the message budget never produces an empty reply', () => {
-  const result = renderStatusMessages(
-    [home({ name: 'a'.repeat(3993) })],
-    translate('en'),
-  )
+  const t = translate('en')
+
+  const result = renderStatusMessages([home({ name: 'a'.repeat(3993) })], t)
 
   assert.equal(result[0].length, 4000)
-  assert.match(result[1], /^<b>⚡ Power on ✅/)
+  assert.ok(result[1].startsWith(`<b>⚡ ${t('monitor_on')} ✅`), result[1])
   assert.ok(
     result.every(message => message.length > 0 && message.length <= 4000),
   )
@@ -401,7 +471,10 @@ test('locale keys and variables agree and status renders both languages', async 
       key => i18n.t(locale, key),
     ).join('')
 
-    assert.match(result, /01\.01\.1970 00:00 \((local time|местн\. вр\.)\)/)
+    assert.match(
+      result,
+      literal(`01.01.1970 00:00 (${i18n.t(locale, 'monitor_local_time')})`),
+    )
     assert.doesNotMatch(result, /monitor_/)
   }
 })
@@ -419,13 +492,19 @@ test('notification timestamps use the fixed home offset across midnight', t => {
 
   process.env.TZ = 'America/New_York'
 
+  const translateEnglish = translate('en')
+
   const [alert] = messages.renderPowerAlert(
     { state: 'off', detectedAt: '2026-11-20T23:15:00.000Z' },
     home({ timeZone: 'GMT+2' }),
-    translate('en'),
+    translateEnglish,
   )
 
-  assert.match(alert, /21\.11\.2026 01:15:00 \(local time\)/)
+  const expected = literal(
+    `21.11.2026 01:15:00 (${translateEnglish('monitor_local_time')})`,
+  )
+
+  assert.match(alert, expected)
 
   const [status] = messages.renderRecurringStatusMessages(
     home({
@@ -433,10 +512,10 @@ test('notification timestamps use the fixed home offset across midnight', t => {
       timeZone: 'GMT+2',
       observedAt: '2026-11-20T23:15:00.000Z',
     }),
-    translate('en'),
+    translateEnglish,
   )
 
-  assert.match(status, /21\.11\.2026 01:15:00 \(local time\)/)
+  assert.match(status, expected)
 })
 
 test('transition alerts show localized episode history and omit unsupported durations', () => {
@@ -447,7 +526,12 @@ test('transition alerts show localized episode history and omit unsupported dura
       translate(locale),
     )[0]
 
+  const en = translate('en')
+  const ru = translate('ru')
+
   const previousOffAt = '2026-11-20T08:00:00.000Z'
+  const localTime = '20.11.2026 10:00:00'
+  const thirtyMinutes = en('monitor_minutes', { count: 30 })
 
   const restored = render('on', '2026-11-20T09:30:00.000Z', {
     previousOffAt,
@@ -456,21 +540,42 @@ test('transition alerts show localized episode history and omit unsupported dura
 
   assert.match(
     restored,
-    /🔌 Power went off at 20\.11\.2026 10:00:00 \(local time\)/,
+    literal(
+      `🔌 ${en('monitor_restored_off_at')} ${localTime} (${en('monitor_local_time')})`,
+    ),
   )
-  assert.match(restored, /⏱ Power was out for 1 hour 30 minutes/)
+  assert.match(
+    restored,
+    literal(
+      `⏱ ${en('monitor_restored_downtime')} ${en('monitor_hours', { count: 1 })} ${thirtyMinutes}`,
+    ),
+  )
 
   const outage = render('off', '2026-11-20T12:00:00.000Z', {
     previousOffAt,
     precedingStateMs: 9000000,
   })
 
-  assert.match(outage, /⏱ With power: 2 hours 30 minutes/)
   assert.match(
     outage,
-    /📅 Previous detected at: 20\.11\.2026 10:00:00 \(local time\)/,
+    literal(
+      `⏱ ${en('monitor_observed_uptime')}: ${en('monitor_hours', { count: 2 })} ${thirtyMinutes}`,
+    ),
   )
-  assert.match(outage, /Previous outage was: 4 hours ago/)
+  assert.match(
+    outage,
+    literal(
+      `📅 ${en('monitor_previous_outage')}: ${localTime} (${en('monitor_local_time')})`,
+    ),
+  )
+  assert.match(
+    outage,
+    literal(
+      en('monitor_between_outages', {
+        duration: en('monitor_hours', { count: 4 }),
+      }),
+    ),
+  )
 
   const localizedOutage = render(
     'off',
@@ -479,7 +584,20 @@ test('transition alerts show localized episode history and omit unsupported dura
     'ru',
   )
 
-  assert.match(localizedOutage, /Предыдущее отключение было: 4 часа назад/)
+  assert.match(
+    localizedOutage,
+    literal(
+      ru('monitor_between_outages', {
+        duration: ru('monitor_hours', { count: 4 }),
+      }),
+    ),
+  )
+  assert.match(
+    localizedOutage,
+    literal(
+      `📅 ${ru('monitor_previous_outage')}: ${localTime} (${ru('monitor_local_time')})`,
+    ),
+  )
 
   const uncertain = render(
     'off',
@@ -488,11 +606,8 @@ test('transition alerts show localized episode history and omit unsupported dura
     'ru',
   )
 
-  assert.match(uncertain, /20\.11\.2026 10:00:00 \(местн\. вр\.\)/)
-  assert.doesNotMatch(
-    uncertain,
-    /Время с электричеством|Предыдущее отключение было/,
-  )
+  assert.match(uncertain, literal(`${localTime} (${ru('monitor_local_time')})`))
+  assert.doesNotMatch(uncertain, /⏱|↔️/)
 })
 
 test('restore alerts show off time and downtime, approximate when continuity is unknown', () => {
@@ -502,6 +617,9 @@ test('restore alerts show off time and downtime, approximate when continuity is 
       home({ timeZone: 'GMT+3' }),
       translate(locale),
     )[0]
+
+  const en = translate('en')
+  const ru = translate('ru')
 
   const previousOffAt = '2026-11-20T15:58:43.000Z'
 
@@ -518,10 +636,12 @@ test('restore alerts show off time and downtime, approximate when continuity is 
 
   assert.match(
     approximate,
-    /⏱ Электричество отсутствовало ≈ 20 часов 39 минут\n🔌 Было отключено в 20\.11\.2026 18:58:43 \(местн\. вр\.\)/,
+    literal(
+      `⏱ ${ru('monitor_restored_downtime')} ≈ ${ru('monitor_hours', { count: 20 })} ${ru('monitor_minutes', { count: 39 })}\n🔌 ${ru('monitor_restored_off_at')} 20.11.2026 18:58:43 (${ru('monitor_local_time')})`,
+    ),
   )
-  assert.match(approximate, /⚠️ Непрерывность неизвестна/)
-  assert.doesNotMatch(approximate, /Отключение обнаружено/)
+  assert.match(approximate, literal(`⚠️ ${ru('monitor_uncertain')}`))
+  assert.doesNotMatch(approximate, /📅/)
 
   const observed = render({
     detectedAt,
@@ -529,8 +649,16 @@ test('restore alerts show off time and downtime, approximate when continuity is 
     history: { previousOffAt, precedingStateMs: 5400000 },
   })
 
-  assert.match(observed, /🔌 Power went off at 20\.11\.2026 18:58:43/)
-  assert.match(observed, /⏱ Power was out for 1 hour 30 minutes/)
+  assert.match(
+    observed,
+    literal(`🔌 ${en('monitor_restored_off_at')} 20.11.2026 18:58:43`),
+  )
+  assert.match(
+    observed,
+    literal(
+      `⏱ ${en('monitor_restored_downtime')} ${en('monitor_hours', { count: 1 })} ${en('monitor_minutes', { count: 30 })}`,
+    ),
+  )
   assert.doesNotMatch(observed, /≈|⚠️/)
 
   const reversed = render({
@@ -538,16 +666,19 @@ test('restore alerts show off time and downtime, approximate when continuity is 
     history: { previousOffAt, precedingStateMs: null },
   })
 
-  assert.match(reversed, /Power went off at/)
-  assert.doesNotMatch(reversed, /Power was out for/)
+  assert.match(reversed, literal(en('monitor_restored_off_at')))
+  assert.doesNotMatch(reversed, /⏱/)
 
   const baseline = render({ detectedAt })
 
-  assert.doesNotMatch(baseline, /Power went off at|Power was out for/)
+  assert.doesNotMatch(baseline, /🔌|⏱/)
 })
 
 test('manual status timestamps follow each home offset, including device observations', () => {
   const observedAt = '2026-11-20T23:15:00.000Z'
+
+  const t = translate('en')
+  const localTime = t('monitor_local_time')
 
   const first = home({
     name: 'East',
@@ -567,22 +698,31 @@ test('manual status timestamps follow each home offset, including device observa
     lastInferredAt: observedAt,
   })
 
-  const [brief] = renderStatusMessages([first, second], translate('en'))
+  const [brief] = renderStatusMessages([first, second], t)
 
   assert.match(
     brief,
-    /Before that, power went off at 21\.11\.2026 01:15 \(local time\)/,
+    literal(`${t('monitor_before_off')} 21.11.2026 01:15 (${localTime})`),
   )
-  assert.match(brief, /Last check: 20\.11\.2026 19:45 \(local time\)/)
+  assert.match(
+    brief,
+    literal(`${t('monitor_last_confirmed')}: 20.11.2026 19:45 (${localTime})`),
+  )
   assert.doesNotMatch(brief, /GMT|UTC/)
 
-  const [full] = messages.renderFullStatusMessages([first], translate('en'))
+  const [full] = messages.renderFullStatusMessages([first], t)
 
-  assert.equal(full.match(/21\.11\.2026 01:15 \(local time\)/g)?.length, 6)
+  assert.equal(full.split(`21.11.2026 01:15 (${localTime})`).length - 1, 6)
   assert.doesNotMatch(full, /GMT|UTC/)
 })
 
 test('brief status distinguishes outage detection from the last confirmation', () => {
+  const t = translate('en')
+  const localTime = t('monitor_local_time')
+  const detection = literal(
+    `🕒 ${t('monitor_detected_off')} 20.11.2026 17:58 (${localTime})`,
+  )
+
   const lastOff = { detectedAt: '2026-11-20T15:58:43.000Z', baseline: false }
 
   const outage = home({
@@ -594,30 +734,35 @@ test('brief status distinguishes outage detection from the last confirmation', (
     lastInferredAt: '2026-11-20T16:50:00.000Z',
   })
 
-  const [unknown] = renderStatusMessages(
-    [{ ...outage, status: 'unknown' }],
-    translate('en'),
-  )
+  const [unknown] = renderStatusMessages([{ ...outage, status: 'unknown' }], t)
 
-  assert.match(unknown, /⚡ Last known state:\n<b>Power off ❌<\/b>/)
-  assert.match(unknown, /🔄 Last check: 20\.11\.2026 18:50 \(local time\)/)
-  assert.match(unknown, /The current state could not be confirmed/)
-  assert.doesNotMatch(unknown, /Power status unknown/)
   assert.match(
     unknown,
-    /🕒 Power outage detected at 20\.11\.2026 17:58 \(local time\)/,
+    literal(`⚡ ${t('monitor_last_known')}:\n<b>${t('monitor_off')} ❌</b>`),
   )
-
-  const [off] = renderStatusMessages([outage], translate('en'))
-
   assert.match(
-    off,
-    /🕒 Power outage detected at 20\.11\.2026 17:58 \(local time\)/,
+    unknown,
+    literal(
+      `🔄 ${t('monitor_last_confirmed')}: 20.11.2026 18:50 (${localTime})`,
+    ),
   )
-  assert.doesNotMatch(off, /Power off for/)
+  assert.match(unknown, literal(t('monitor_check_inconclusive')))
+  assert.doesNotMatch(unknown, literal(t('monitor_status_unknown')))
+  assert.match(unknown, detection)
+
+  const [off] = renderStatusMessages([outage], t)
+
+  assert.match(off, detection)
+  assert.doesNotMatch(off, /⏱/)
 })
 
 test('Russian brief status distinguishes a confirmed outage from the last known outage', () => {
+  const t = translate('ru')
+  const localTime = t('monitor_local_time')
+  const detection = literal(
+    `🕒 ${t('monitor_detected_off')} 20.11.2026 18:58 (${localTime})`,
+  )
+
   const outage = home({
     timeZone: 'GMT+3',
     status: 'off',
@@ -626,31 +771,28 @@ test('Russian brief status distinguishes a confirmed outage from the last known 
     lastInferredAt: '2026-11-20T17:12:00.000Z',
   })
 
-  const [current] = renderStatusMessages([outage], translate('ru'))
+  const [current] = renderStatusMessages([outage], t)
   const [inconclusive] = renderStatusMessages(
     [{ ...outage, status: 'unknown' }],
-    translate('ru'),
+    t,
   )
 
-  assert.match(current, /⚡ Электричества нет ❌/)
-  assert.match(
-    current,
-    /🕒 Отключение света обнаружено в 20\.11\.2026 18:58 \(местн\. вр\.\)/,
-  )
+  assert.match(current, literal(`⚡ ${t('monitor_off')} ❌`))
+  assert.match(current, detection)
   assert.match(
     inconclusive,
-    /⚡ По последним данным:\n<b>Электричества нет ❌<\/b>/,
+    literal(`⚡ ${t('monitor_last_known')}:\n<b>${t('monitor_off')} ❌</b>`),
   )
+  assert.match(inconclusive, detection)
   assert.match(
     inconclusive,
-    /🕒 Отключение света обнаружено в 20\.11\.2026 18:58 \(местн\. вр\.\)/,
+    literal(
+      `🔄 ${t('monitor_last_confirmed')}: 20.11.2026 20:12 (${localTime})`,
+    ),
   )
-  assert.match(
-    inconclusive,
-    /🔄 Последняя проверка: 20\.11\.2026 20:12 \(местн\. вр\.\)/,
-  )
-  assert.match(inconclusive, /Подтвердить текущее состояние не удалось/)
-  assert.doesNotMatch(inconclusive, /Состояние электричества неизвестно|уже /)
+  assert.match(inconclusive, literal(t('monitor_check_inconclusive')))
+  assert.doesNotMatch(inconclusive, literal(t('monitor_status_unknown')))
+  assert.doesNotMatch(inconclusive, /⏱/)
 })
 
 test('brief status uses state-specific detection and previous-change wording', () => {
@@ -661,34 +803,32 @@ test('brief status uses state-specific detection and previous-change wording', (
     lastOn: { detectedAt: '2026-11-20T04:01:00.000Z', baseline: false },
   })
 
-  const ru = renderStatusMessages([off], translate('ru')).join('\n')
+  const ru = translate('ru')
+  const en = translate('en')
 
-  assert.ok(
-    ru.includes(
-      '🕒 Отключение света обнаружено в 20.11.2026 18:58 (местн. вр.)\n\n✅ До этого свет включали 20.11.2026 07:01',
+  const russian = renderStatusMessages([off], ru).join('\n')
+
+  assert.match(
+    russian,
+    literal(
+      `🕒 ${ru('monitor_detected_off')} 20.11.2026 18:58 (${ru('monitor_local_time')})\n\n✅ ${ru('monitor_before_on')} 20.11.2026 07:01`,
     ),
-    ru,
   )
 
-  const en = renderStatusMessages([off], translate('en')).join('\n')
+  const english = renderStatusMessages([off], en).join('\n')
 
-  assert.match(en, /Power outage detected at/)
-  assert.match(en, /Before that, power came on at/)
+  assert.match(english, literal(en('monitor_detected_off')))
+  assert.match(english, literal(en('monitor_before_on')))
 
-  const on = renderStatusMessages(
-    [{ ...off, status: 'on' }],
-    translate('en'),
-  ).join('\n')
+  const on = renderStatusMessages([{ ...off, status: 'on' }], en).join('\n')
 
-  assert.match(on, /Power return detected at/)
-  assert.match(on, /Before that, power went off at/)
+  assert.match(on, literal(en('monitor_detected_on')))
+  assert.match(on, literal(en('monitor_before_off')))
 
-  const full = messages
-    .renderFullStatusMessages([off], translate('en'))
-    .join('\n')
+  const full = messages.renderFullStatusMessages([off], en).join('\n')
 
-  assert.match(full, /Last power on:/)
-  assert.match(full, /Detected:/)
+  assert.match(full, literal(`${en('monitor_last_on')}:`))
+  assert.match(full, literal(`${en('monitor_since')}:`))
 })
 
 test('inconclusive brief status shows the current EZVIZ device reading', () => {
@@ -708,25 +848,26 @@ test('inconclusive brief status shows the current EZVIZ device reading', () => {
     ],
   })
 
-  const [english] = renderStatusMessages([pending], translate('en'))
-  const [russian] = renderStatusMessages([pending], translate('ru'))
+  for (const locale of ['en', 'ru']) {
+    const t = translate(locale)
+    const device = t('monitor_ezviz_now', { device: 'Camera' })
+    const checks = t('monitor_offline_checks', { count: 1, total: 3 })
+    const warning = literal(t('monitor_check_inconclusive'))
 
-  assert.match(
-    english,
-    /📷 Device Camera \(EZVIZ\) now: Offline 🔌 \(1 of 3 checks ⌛\)/,
-  )
-  assert.doesNotMatch(english, /could not be confirmed/)
-  assert.match(
-    russian,
-    /📷 Устройство Camera \(EZVIZ\) сейчас: Не в сети 🔌 \(1 из 3 проверок ⌛\)/,
-  )
-  assert.doesNotMatch(russian, /Подтвердить текущее состояние не удалось/)
+    const [status] = renderStatusMessages([pending], t)
 
-  const [failed] = renderStatusMessages(
-    [{ ...pending, devices: home().devices }],
-    translate('en'),
-  )
+    assert.match(
+      status,
+      literal(`📷 ${device}: ${t('monitor_device_offline')} 🔌 (${checks} ⌛)`),
+    )
+    assert.doesNotMatch(status, warning)
 
-  assert.match(failed, /The current state could not be confirmed/)
-  assert.doesNotMatch(failed, /\(EZVIZ\) now/)
+    const [failed] = renderStatusMessages(
+      [{ ...pending, devices: home().devices }],
+      t,
+    )
+
+    assert.match(failed, warning)
+    assert.doesNotMatch(failed, literal(device))
+  }
 })
